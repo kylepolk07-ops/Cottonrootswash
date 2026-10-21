@@ -1,0 +1,47 @@
+// Run: PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/browser.mjs
+// Uses isolated synthetic fixtures, never the retained staging database.
+import {mkdtempSync,readFileSync,mkdirSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+import {createApp} from '../server/app.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const dir=mkdtempSync(resolve(tmpdir(),'cotton-browser-'));
+const application=await createApp({dataDir:dir,fixtures:true});
+await new Promise(r=>application.server.listen(0,'127.0.0.1',r));
+const base=`http://127.0.0.1:${application.server.address().port}`;
+const fixtures=JSON.parse(readFileSync(resolve(dir,'fixtures.json'),'utf8'));
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'America/Chicago'});
+const page=await context.newPage();
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const shotDir=resolve('test-results');mkdirSync(shotDir,{recursive:true});
+const click=t=>page.getByRole('button',{name:t,exact:true}).click();
+const login=async(name,app)=>{await page.goto(base+'/'+app);const a=fixtures.accounts.find(x=>x.username===name);await page.getByLabel('Username',{exact:true}).fill(a.username);await page.getByLabel('Password',{exact:true}).fill(a.password);await click('Sign in');await page.getByRole('button',{name:'Sign out',exact:true}).waitFor()};
+const heading=t=>page.getByRole('heading',{name:t,exact:true}).waitFor();
+try{
+ await login('customer','customer');
+ await click('My bags');await click('Claim a bag at the box');
+ await page.getByLabel('I scanned the QR inside the lid. I am taking a bag.').check();
+ await page.getByLabel('Scan your unique bag QR',{exact:true}).fill(fixtures.bagToken);
+ await click('Next: close the box');await page.getByLabel('I shut and locked the box.').check();await click('Claim this bag');await heading('Your Cotton Roots bags');
+ await click('New order');await click('Next: detergent');await click('Review order');await click('Create order');await heading('Your laundry, step by step');
+ await click('Drop off this bag');await page.getByLabel('Scan the matching bag QR',{exact:true}).fill('wrong-token');await page.getByLabel('Scan the shop station QR',{exact:true}).fill(fixtures.stationToken);await click('Confirm this step');await page.getByRole('status').filter({hasText:'Bag owner and wall QR must be verified'}).waitFor();
+ await page.getByLabel('Scan the matching bag QR',{exact:true}).fill(fixtures.bagToken);await click('Confirm this step');await heading('Your laundry, step by step');
+ await page.reload();await heading('Your laundry, step by step');assert.equal(await page.getByText('at shop',{exact:true}).count(),1);
+ assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
+ await page.screenshot({path:resolve(shotDir,'customer-mobile.png'),fullPage:true});
+ await click('Sign out');await login('contractor','contractor');await click('Availability');
+ const now=new Date(),dateLabel=now.toLocaleDateString('en-US',{timeZone:'America/Chicago',weekday:'short',month:'short',day:'numeric'});
+ await page.getByLabel(dateLabel,{exact:true}).check();await click('Save availability');await page.getByRole('status').filter({hasText:'Availability saved.'}).waitFor();
+ await click('Jobs');await click('Review this offer');await page.getByLabel('I can meet this deadline.').check();await click('Confirm this step');await click('Scan bag & weigh');
+ await page.getByLabel('Scan the matching bag QR',{exact:true}).fill(fixtures.bagToken);await page.getByLabel('Measured pounds',{exact:true}).fill('12.1');await click('Confirm this step');
+ await page.getByText('12.5 lb',{exact:true}).waitFor();await click('Scan station & check out');await page.getByLabel('Scan the shop station QR',{exact:true}).fill(fixtures.stationToken);await click('Confirm this step');
+ await page.reload();await click('Laundry is clean');await click('Confirm this step');await click('Scan bag on return');await page.getByLabel('Scan the matching bag QR',{exact:true}).fill(fixtures.bagToken);await click('Confirm this step');await click('Check in at shop');await page.getByLabel('Scan the shop station QR',{exact:true}).fill(fixtures.stationToken);await click('Confirm this step');await page.getByText('payment pending',{exact:true}).waitFor();
+ await click('My pay');await page.getByText('status: pending',{exact:true}).waitFor();await page.screenshot({path:resolve(shotDir,'contractor-mobile.png'),fullPage:true});
+ assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
+ await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');await page.getByRole('heading',{name:'Audit trail',exact:true}).waitFor();assert.ok(await page.locator('pre').count()>0);await page.screenshot({path:resolve(shotDir,'management-mobile.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+ assert.deepEqual(errors,[]);
+ console.log('PASS mobile browser flow: claim, booking, wrong QR rejection, dropoff, persistent reload, availability, acceptance, rounded weight, checkout, complete, return, pending earnings, customer/contractor management denial, owner management audit. No browser exceptions.');
+}finally{await context.close();await browser.close();await new Promise(r=>application.server.close(r));application.close();rmSync(dir,{recursive:true,force:true})}

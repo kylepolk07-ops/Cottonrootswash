@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cotton Roots Customer App</title>
+<style>
+:root{
+  --bg:#f7f4ee; --panel:#ffffff; --ink:#233229; --muted:#6c766f; --brand:#2d4a3d;
+  --soft:#eef4ed; --line:#dde5da; --accent:#111; --warn:#fff3e6;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink)}
+button,input,select{font:inherit}
+.app{max-width:480px;margin:0 auto;min-height:100vh;background:#fbfaf7;box-shadow:0 0 40px rgba(0,0,0,.06);padding-bottom:90px}
+.header{background:var(--brand);color:#fff;padding:18px 20px 24px;border-radius:0 0 22px 22px}
+.header h1{margin:8px 0 6px;font-size:28px;font-family:Georgia,serif;font-weight:500}
+.header p{margin:0;font-size:13px;opacity:.84}
+.tiny{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;opacity:.82}
+.switch{float:right;background:none;border:0;color:#e3ece5;font-size:12px;padding:0}
+.main{padding:18px}
+.page{display:none}.page.active{display:block}
+.intro{font-size:24px;font-family:Georgia,serif;font-weight:500;margin:0 0 12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(0,0,0,.04)}
+.pill{display:inline-block;background:var(--soft);color:#355344;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:800;margin-bottom:10px}
+.muted{color:var(--muted);font-size:13px;line-height:1.45}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choice,.tile{border:2px solid var(--line);background:#fff;border-radius:18px;padding:14px;text-align:left;cursor:pointer}
+.choice.sel,.tile.sel,.choice:hover,.tile:hover{background:#eef4ec;border-color:#567564}
+.icon{font-size:36px;display:block;margin-bottom:10px}
+.choice strong,.tile strong{display:block;font-size:17px;font-family:Georgia,serif;font-weight:500}
+.choice small,.tile small{display:block;color:var(--muted);line-height:1.4;margin-top:4px}
+.cost{display:block;margin-top:10px;color:#355344;font-weight:800}
+.btn{width:100%;border:0;border-radius:13px;padding:13px 16px;font-weight:700;cursor:pointer;background:var(--brand);color:#fff}
+.btn.secondary{background:#edf1ec;color:var(--brand)}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+label{display:block;font-size:12px;font-weight:700;color:#4b584f;margin:12px 0 6px}
+input,select{width:100%;padding:12px;border:1px solid #d4ddd1;border-radius:12px;background:#fff;color:var(--ink)}
+.step{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #eef1eb}
+.step:last-child{border-bottom:0}
+.step .big{font-size:28px;line-height:1;width:36px;flex:none;text-align:center}
+.step p{margin:0;font-size:13px;line-height:1.45}
+.note{background:#eef4ed;border-radius:12px;padding:12px;font-size:12px;line-height:1.5;color:#405247}
+.warn{background:var(--warn);border-radius:12px;padding:12px;font-size:12px;line-height:1.5;color:#7a5328}
+.hidden{display:none !important}
+.orders .order{border-left:4px solid #79907d}
+.line{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.tag{display:inline-block;background:#edf3ec;color:#355344;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800}
+.caption{font-size:11px;color:#7a837c}
+.tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);max-width:480px;width:100%;display:flex;justify-content:space-around;background:#fff;border-top:1px solid #e7e9e2;padding:8px 6px calc(8px + env(safe-area-inset-bottom));z-index:10}
+.tabs button{border:0;background:none;color:#768079;font-size:11px;padding:6px;min-width:64px}
+.tabs button span{display:block;font-size:19px;margin-bottom:2px}
+.tabs button.active{color:var(--brand);font-weight:800}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:#233229;color:#fff;padding:10px 14px;border-radius:12px;font-size:12px;display:none;z-index:30;max-width:420px;width:90%}
+.overlay{position:fixed;inset:0;background:rgba(247,244,238,.98);display:flex;justify-content:center;align-items:flex-start;padding:26px 16px;z-index:40}
+.auth{max-width:430px;width:100%;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:0 14px 40px rgba(0,0,0,.08)}
+.auth h2{margin:8px 0 10px;font-size:28px;font-family:Georgia,serif;font-weight:500}
+.auth p{margin:0 0 12px;color:var(--muted);font-size:13px;line-height:1.45}
+.boxcheck{display:flex;gap:10px;align-items:flex-start;margin-top:10px}
+.boxcheck input{width:auto;margin-top:2px}
+@media print{.tabs,.overlay,.toast{display:none !important}.app{max-width:none;box-shadow:none}.header{border-radius:0}}
+.stars{display:flex;justify-content:space-between;gap:5px;margin:16px 0}.stars button{font-size:32px;background:#f2f4ed;color:#8b948b;border:1px solid #dce5d9;border-radius:13px;padding:9px 2px;flex:1;cursor:pointer}.stars button.sel{background:#e5eee0;color:#aa781c;border-color:#55745c}.feedback input{margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="overlay" id="entry">
+  <div class="auth">
+    <div class="tiny" style="color:#73856d">Cotton Roots &amp; Co. · Customer</div>
+    <h2 id="entryTitle">Welcome</h2>
+    <p id="entryText">Tap in. Follow the steps. We show you what to do next.</p>
+    <div id="returning" class="hidden">
+      <button class="btn" onclick="enterApp()">Continue as <span id="returnName"></span> →</button>
+      <button class="btn secondary" style="margin-top:10px" onclick="switchAccount()">Use another account</button>
+    </div>
+    <button class="btn secondary" style="margin-bottom:10px" onclick="customerTestMode()">🧪 Preview without signing up</button><div id="newUser">
+      <button class="btn" onclick="enterApp(); go('profilePage')">Create account →</button>
+      <button class="btn secondary" style="margin-top:10px" onclick="showExisting()">I already used this device</button>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:14px"><input id="rememberMe" type="checkbox" checked style="width:auto"> Remember me on this phone</label>
+    <button class="btn secondary" disabled>Face ID later</button>
+    <p class="caption" style="margin-top:10px">Prototype only. This phone can remember your profile here, but this is not a secure live login yet.</p>
+  </div>
+</div>
+
+<div class="app">
+  <div class="header">
+    <button class="switch" onclick="signOutDemo()">Switch account</button>
+    <div class="tiny">Cotton Roots &amp; Co.</div>
+    <h1>Easy laundry.</h1>
+    <p>Big buttons. Simple steps.</p>
+  </div>
+
+  <div class="main">
+    <section class="page active" id="homePage">
+      <h2 class="intro" id="hello">Welcome.</h2>
+      <div class="grid2">
+        <button class="choice" onclick="resetBook(); go('bookPage')">
+          <span class="icon">🧺</span>
+          <strong>Start Order</strong>
+          <small>Drop off or pickup.</small>
+        </button>
+        <button class="choice" onclick="go('bagsPage')">
+          <span class="icon">🖤</span>
+          <strong>Get a Bag</strong>
+          <small>First bag or extra bag.</small>
+        </button>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <button class="choice" onclick="go('scanPage')">
+          <span class="icon">▦</span>
+          <strong>Scan</strong>
+          <small>Drop off or pick up.</small>
+        </button>
+        <button class="choice" onclick="go('ordersPage')">
+          <span class="icon">📋</span>
+          <strong>My Orders</strong>
+          <small>See status.</small>
+        </button>
+      </div>
+
+      <div class="card">
+        <span class="pill">FIRST TIME</span>
+        <div class="step"><div class="big">1️⃣</div><p><b>Bring clothes in your own bag.</b></p></div>
+        <div class="step"><div class="big">2️⃣</div><p><b>Take 1 black Cotton Roots bag.</b></p></div>
+        <div class="step"><div class="big">3️⃣</div><p><b>Scan under lid. Then scan the bag.</b></p></div>
+        <div class="step"><div class="big">4️⃣</div><p><b>Drop off = 2 scans. Pick up = 1 scan.</b></p></div>
+      </div>
+
+      <div class="warn">
+        <b>24-hour bag rule</b><br>
+        First bag is included. Bring it back with your first order within 24 hours or a $10 bag charge applies.
+      </div>
+    </section>
+
+    <section class="page" id="profilePage">
+      <h2 class="intro">Your info.</h2>
+      <div class="card">
+        <label>Name<input id="pName" placeholder="Full name"></label>
+        <label>Phone<input id="pPhone" placeholder="(325) 555-0000"></label>
+        <label>Email (optional)<input id="pEmail" placeholder="you@example.com"></label>
+        <label>Address<input id="pAddress" placeholder="Street, city, ZIP"></label>
+        <label>Detergent<select id="pDet"><option>Use Cotton Roots detergent</option><option>I will send my own detergent</option><option>Contact me about detergent</option></select></label>
+        <div class="note">If you send your own detergent, put it in a labeled Ziploc bag inside your Cotton Roots bag.</div>
+        <button class="btn" style="margin-top:12px" onclick="saveProfile()">Save →</button>
+      </div>
+    </section>
+
+    <section class="page" id="bookPage">
+      <h2 class="intro">How do you want to do laundry?</h2>
+      <div id="bookChoice" class="grid2">
+        <button class="choice" onclick="pickService('drop', this)">
+          <span class="icon">🛍️</span>
+          <strong>Drop Off</strong>
+          <small>Bring it to the shop.</small>
+          <span class="cost">$2.50/lb</span>
+        </button>
+        <button class="choice" onclick="pickService('pickup', this)">
+          <span class="icon">🚗</span>
+          <strong>Pick Up From Me</strong>
+          <small>We pick up and return.</small>
+          <span class="cost">$3.00/lb</span>
+        </button>
+      </div>
+
+      <div id="bookSteps" class="hidden">
+        <div class="card" id="stepInfo">
+          <span class="pill">STEP 1</span>
+          <h3 style="font-size:22px;margin:0 0 8px;font-family:Georgia,serif;font-weight:500">Tell us who you are.</h3>
+          <label>Name<input id="bName" placeholder="Full name"></label>
+          <label>Phone<input id="bPhone" placeholder="(325) 555-0000"></label>
+          <label>Address<input id="bAddress" placeholder="Street, city, ZIP"></label>
+          <label>Detergent</label>
+          <div class="grid2">
+            <button class="tile sel" data-group="det" data-value="Use Cotton Roots detergent" onclick="pickTile(this)"><span class="icon">🫧</span><strong>Our detergent</strong><small>Use ours.</small></button>
+            <button class="tile" data-group="det" data-value="I will send my own detergent" onclick="pickTile(this)"><span class="icon">🧴</span><strong>My own</strong><small>Send in Ziploc.</small></button>
+          </div>
+          <input id="bookDet" type="hidden" value="Use Cotton Roots detergent">
+          <div class="btnrow"><button class="btn secondary" onclick="resetBook()">← Back</button><button class="btn" onclick="nextStep('details')">Next →</button></div>
+        </div>
+
+        <div class="card hidden" id="stepDetails">
+          <span class="pill">STEP 2</span>
+          <h3 style="font-size:22px;margin:0 0 8px;font-family:Georgia,serif;font-weight:500">A few details.</h3>
+          <div id="dropBox" class="hidden">
+            <div class="grid2">
+              <button class="tile sel" data-group="turn" data-value="Standard" onclick="pickTile(this)"><span class="icon">⏱️</span><strong>Standard</strong><small>Regular turnaround.</small></button>
+              <button class="tile" data-group="turn" data-value="12-hour rush" onclick="pickTile(this)"><span class="icon">⚡</span><strong>Rush</strong><small>+$1/lb · approval needed.</small></button>
+            </div>
+          </div>
+          <div id="pickupBox" class="hidden">
+            <label>Pickup address<input id="pickAddr" placeholder="Pickup location"></label>
+            <label>Return address<input id="returnAddr" placeholder="Return location"></label>
+            <div class="grid2">
+              <button class="tile sel" data-group="turn" data-value="Standard" onclick="pickTile(this)"><span class="icon">📅</span><strong>Standard</strong><small>Regular schedule.</small></button>
+              <button class="tile" data-group="turn" data-value="12-hour rush" onclick="pickTile(this)"><span class="icon">⚡</span><strong>Rush</strong><small>+$1/lb · approval needed.</small></button>
+            </div>
+          </div>
+          <input id="bookTurn" type="hidden" value="Standard">
+          <div class="btnrow"><button class="btn secondary" onclick="showBook('info')">← Back</button><button class="btn" onclick="buildReview()">Next →</button></div>
+        </div>
+
+        <div class="card hidden" id="stepReview">
+          <span class="pill">STEP 3</span>
+          <h3 style="font-size:22px;margin:0 0 8px;font-family:Georgia,serif;font-weight:500">What happens next.</h3>
+          <div id="review"></div>
+          <div class="btnrow"><button class="btn secondary" onclick="showBook('details')">← Back</button><button class="btn" onclick="submitOrder()">Finish →</button></div>
+        </div>
+      </div>
+
+      <div id="bookDone"></div>
+    </section>
+
+    <section class="page" id="bagsPage">
+      <h2 class="intro">Need a bag?</h2>
+      <div class="grid2" id="bagChoices">
+        <button class="choice" onclick="beginBag('first', this)">
+          <span class="icon">🖤</span>
+          <strong>First Bag</strong>
+          <small>Included</small>
+          <span class="cost">Return in 24 hrs</span>
+        </button>
+        <button class="choice" onclick="beginBag('extra', this)">
+          <span class="icon">➕</span>
+          <strong>Extra Bag</strong>
+          <small>Buy another bag</small>
+          <span class="cost">$10</span>
+        </button>
+      </div>
+
+      <div id="bagFlow" class="hidden">
+        <div class="card" id="bagIntro">
+          <span class="pill">STEP 1</span>
+          <div class="step"><div class="big">🔑</div><p><b>Get code</b><br><span id="bagCodeText">We send your bag box code.</span></p></div>
+          <div class="step"><div class="big">📦</div><p><b>Open box</b><br>Take 1 bag only.</p></div>
+          <button class="btn" onclick="showBagStep('lid')">Next →</button>
+        </div>
+
+        <div class="card hidden" id="bagLid">
+          <span class="pill">STEP 2</span>
+          <div class="step"><div class="big">▦</div><p><b>Scan the QR under the lid.</b><br>This means: <b>I'm taking a bag.</b></p></div>
+          <label>Under-lid QR<input id="lidQR" placeholder="Scan under-lid QR"></label>
+          <button class="btn" onclick="showBagStep('lock')">Next →</button>
+        </div>
+
+        <div class="card hidden" id="bagLock">
+          <span class="pill">STEP 3</span>
+          <div class="step"><div class="big">🔒</div><p><b>Shut and lock the box.</b></p></div>
+          <label class="boxcheck"><input id="boxLocked" type="checkbox"><span>I shut the lid and locked the box.</span></label>
+          <button class="btn" onclick="showBagStep('scanbag')">Next →</button>
+        </div>
+
+        <div class="card hidden" id="bagScan">
+          <span class="pill">STEP 4</span>
+          <div class="step"><div class="big">🏷️</div><p><b>Scan the bag you took.</b><br>This connects that bag to your account.</p></div>
+          <label>Bag QR<input id="bagQR" placeholder="CRC-0001"></label>
+          <button class="btn" onclick="claimBag()">Finish →</button>
+        </div>
+      </div>
+
+      <div id="bagDone"></div>
+    </section>
+
+    <section class="page" id="scanPage">
+      <h2 class="intro">What are you doing?</h2>
+      <div id="scanChoice" class="grid2">
+        <button class="choice" onclick="startScan('drop')"><span class="icon">📥</span><strong>Drop Off</strong><small>2 quick scans</small></button>
+        <button class="choice" onclick="startScan('pickup')"><span class="icon">📤</span><strong>Pick Up</strong><small>Check it's yours</small></button>
+      </div>
+      <div class="hidden" id="scanFlow">
+        <div class="card" id="scanBagStep">
+          <span class="pill" id="scanProgress">STEP 1 OF 2</span>
+          <div class="step"><div class="big">🏷️</div><p><b>Scan your bag QR.</b><br><span class="muted">On your black bag</span></p></div>
+          <label>Bag QR<input id="guidedBag" autocomplete="off" placeholder="CRC-0001"></label><div id="bagMismatch" class="warn hidden" role="alert" style="margin:9px 0"><b>Wrong bag.</b> Check the number and scan again.</div>
+          <div class="btnrow"><button class="btn secondary" onclick="scanMode==='pickup'?showReadyOrders():resetScan()">← Back</button><button class="btn" onclick="scanBagNext()">Next →</button></div>
+        </div>
+        <div class="card hidden" id="scanWallStep">
+          <span class="pill">STEP 2 OF 2</span>
+          <div class="step"><div class="big">▦</div><p><b>Scan QR on the wall.</b><br><span class="muted">Inside the shop</span></p></div>
+          <label>Wall QR<input id="guidedWall" autocomplete="off" placeholder="Wall QR code"></label>
+          <div class="btnrow"><button class="btn secondary" onclick="showScanStep('bag')">← Back</button><button class="btn" onclick="finishDropoff()">Confirm →</button></div>
+        </div>
+        <div class="card hidden" id="scanReadyStep">
+          <span class="pill">YOUR READY ORDERS</span>
+          <h3 style="font:normal 23px Georgia,serif;margin:0 0 12px">Choose your laundry.</h3>
+          <div id="readyList"></div>
+          <button class="btn secondary" onclick="resetScan()" style="margin-top:12px">← Back</button>
+        </div>
+        <div class="card hidden" id="scanPickupStep">
+          <span class="pill">FINAL CHECK</span>
+          <div class="step"><div class="big">✅</div><p><b>Is this your bag?</b><br><span class="muted">Check the number before leaving.</span></p></div>
+          <div class="note" id="pickupCheckNumber"></div><div id="pickupMatchWarning" class="warn hidden" style="margin-top:10px">Wrong bag. Scan the bag shown on your order.</div>
+          <div class="btnrow"><button class="btn secondary" onclick="showScanStep('bag')">← Scan again</button><button class="btn" onclick="finishPickup()">Confirm pickup →</button></div>
+        </div>
+      </div>
+      <div id="scanDone"></div><div id="ratingArea" class="hidden"></div>
+      <p class="caption" style="margin-top:12px">Prototype: fields simulate QR scans. Only the live hosted app can securely verify ownership, Square payment, station scans and release of a bag.</p>
+    </section>
+
+    <section class="page orders" id="ordersPage">
+      <h2 class="intro">My orders.</h2>
+      <div id="ordersList" class="muted">No orders yet.</div><div class="card"><span class="pill">FEEDBACK TRACKER · DEMO</span><div id="ratingStats" class="muted">No ratings yet.</div></div><div class="card"><span class="pill">TESTING ONLY</span><p class="muted">To try the pickup screens, simulate staff marking one checked-in bag as paid and ready. This does not collect payment or release real laundry.</p><button class="btn secondary" onclick="demoMakeReady()">Simulate a paid &amp; ready order</button></div>
+      <div class="card">
+        <span class="pill">BAG RULES</span>
+        <div class="step"><div class="big">🖤</div><p><b>First bag</b><br>Included</p></div>
+        <div class="step"><div class="big">⏰</div><p><b>Bring back in 24 hours</b><br>With first order</p></div>
+        <div class="step"><div class="big">💵</div><p><b>Late / extra bag charge</b><br>$10</p></div>
+      </div>
+    </section>
+  </div>
+
+  <nav class="tabs">
+    <button class="active" data-page="homePage"><span>⌂</span>Home</button>
+    <button data-page="bookPage"><span>＋</span>Book</button>
+    <button data-page="bagsPage"><span>🖤</span>Bags</button>
+    <button data-page="scanPage"><span>▦</span>Scan</button>
+    <button data-page="ordersPage"><span>▤</span>Orders</button>
+  </nav>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) { /* Preview readers may block storage. */ } };
+const setRemember = v => { try { localStorage.setItem('crc_picto_remember', v); } catch(e) {} };
+const getRemember = () => { try { return localStorage.getItem('crc_picto_remember'); } catch(e) { return 'no'; } }; 
+let profile = read('crc_picto_profile', {});
+let orders = read('crc_picto_orders', []);
+let bags = read('crc_picto_bags', []);
+let currentService = null;
+let currentBagType = null;
+
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(window._to); window._to=setTimeout(()=>t.style.display='none',3200); }
+function go(page){ if(page==='ordersPage') renderOrders(); if(page==='scanPage' && typeof resetScan==='function') resetScan(); document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); $(page).classList.add('active'); document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.page===page)); window.scrollTo(0,0); }
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>go(b.dataset.page));
+
+function customerTestMode(){ $('entry').classList.add('hidden'); go('homePage'); toast('Preview mode: explore without registration. Booking still asks for customer details.'); }
+function enterApp(){ $('entry').classList.add('hidden'); setRemember($('rememberMe').checked ? 'yes' : 'no'); }
+function showExisting(){ if(profile.name){ $('returning').classList.remove('hidden'); $('newUser').classList.add('hidden'); $('returnName').textContent=profile.name; } else alert('No saved account on this device yet.'); }
+function switchAccount(){ setRemember('no'); $('returning').classList.add('hidden'); $('newUser').classList.remove('hidden'); $('entryTitle').textContent='Welcome'; $('entryText').textContent='Tap in. Follow the steps. We show you what to do next.'; }
+function signOutDemo(){ setRemember('no'); location.reload(); }
+
+function fillProfile(){
+  $('pName').value=profile.name||''; $('pPhone').value=profile.phone||''; $('pEmail').value=profile.email||''; $('pAddress').value=profile.address||''; $('pDet').value=profile.detergent||'Use Cotton Roots detergent';
+  $('hello').textContent = profile.name ? `Hello, ${profile.name.split(' ')[0]}.` : 'Welcome.';
+}
+function saveProfile(){
+  const p={name:$('pName').value.trim(),phone:$('pPhone').value.trim(),email:$('pEmail').value.trim(),address:$('pAddress').value.trim(),detergent:$('pDet').value};
+  if(!p.name||!p.phone||!p.address){ toast('Add name, phone, and address.'); return; }
+  profile=p; write('crc_picto_profile', profile); fillProfile(); toast('Saved.'); go('bookPage');
+}
+
+function pickTile(btn){
+  const group=btn.dataset.group; document.querySelectorAll(`[data-group="${group}"]`).forEach(x=>x.classList.remove('sel')); btn.classList.add('sel');
+  if(group==='det') $('bookDet').value=btn.dataset.value;
+  if(group==='turn') $('bookTurn').value=btn.dataset.value;
+}
+function pickService(type, btn){
+  currentService=type; document.querySelectorAll('#bookChoice .choice').forEach(x=>x.classList.remove('sel')); btn.classList.add('sel');
+  $('bookChoice').classList.add('hidden'); $('bookSteps').classList.remove('hidden'); $('bookDone').innerHTML='';
+  $('bName').value=profile.name||''; $('bPhone').value=profile.phone||''; $('bAddress').value=profile.address||'';
+  $('pickAddr').value=profile.address||''; $('returnAddr').value=profile.address||'';
+  $('dropBox').classList.toggle('hidden', type!=='drop'); $('pickupBox').classList.toggle('hidden', type!=='pickup');
+  showBook('info');
+}
+function resetBook(){ currentService=null; $('bookChoice').classList.remove('hidden'); $('bookSteps').classList.add('hidden'); $('bookDone').innerHTML=''; document.querySelectorAll('#bookChoice .choice').forEach(x=>x.classList.remove('sel')); }
+function showBook(step){ $('stepInfo').classList.toggle('hidden', step!=='info'); $('stepDetails').classList.toggle('hidden', step!=='details'); $('stepReview').classList.toggle('hidden', step!=='review'); window.scrollTo(0,0); }
+function nextStep(step){
+  if(!$('bName').value.trim()||!$('bPhone').value.trim()||!$('bAddress').value.trim()){ toast('Add name, phone, and address.'); return; }
+  showBook(step);
+}
+function buildReview(){
+  if(currentService==='pickup' && (!$('pickAddr').value.trim()||!$('returnAddr').value.trim())){ toast('Add pickup and return address.'); return; }
+  const det=$('bookDet').value, turn=$('bookTurn').value;
+  $('review').innerHTML=`
+    <div class="step"><div class="big">${currentService==='drop'?'🛍️':'🚗'}</div><p><b>${currentService==='drop'?'Drop Off':'Pick Up From Me'}</b><br>${currentService==='drop'?'$2.50/lb':'$3.00/lb'}</p></div>
+    <div class="step"><div class="big">🧴</div><p><b>Detergent</b><br>${det}</p></div>
+    <div class="step"><div class="big">⏱️</div><p><b>${turn}</b><br>${turn==='12-hour rush'?'Extra $1/lb · approval needed.':'Regular turnaround.'}</p></div>
+    ${currentService==='drop' ? '<div class="step"><div class="big">▦</div><p><b>Next</b><br>Bring your bag in. Scan bag. Scan wall QR.</p></div>' : '<div class="step"><div class="big">📦</div><p><b>Next</b><br>A contractor must accept before pickup.</p></div>'}`;
+  showBook('review');
+}
+function submitOrder(){
+  const p={name:$('bName').value.trim(),phone:$('bPhone').value.trim(),address:$('bAddress').value.trim(),email:profile.email||'',detergent:$('bookDet').value};
+  profile={...profile,...p}; write('crc_picto_profile', profile); fillProfile();
+  const order={id:'CR-'+Date.now().toString().slice(-6),service:currentService,turn:$('bookTurn').value,det:$('bookDet').value,status:currentService==='drop'?'Awaiting shop scan':'Awaiting contractor acceptance',pickupAddress:currentService==='pickup' ? $('pickAddr').value.trim() : '',returnAddress:currentService==='pickup' ? $('returnAddr').value.trim() : '',bagId:'',ownerPhone:p.phone,createdAt:new Date().toISOString()};
+  orders.unshift(order); write('crc_picto_orders', orders); renderOrders();
+  $('bookSteps').classList.add('hidden'); $('bookChoice').classList.add('hidden');
+  $('bookDone').innerHTML=`<div class="card"><span class="pill">DONE</span><div class="step"><div class="big">✅</div><p><b>You are set.</b><br>Order <b>${order.id}</b></p></div>${currentService==='drop' ? '<div class="step"><div class="big">1️⃣</div><p><b>Bring your clothes.</b></p></div><div class="step"><div class="big">2️⃣</div><p><b>Scan bag. Scan wall.</b></p></div><div class="step"><div class="big">3️⃣</div><p><b>Leave bag in bin.</b></p></div>' : '<div class="step"><div class="big">🚗</div><p><b>Wait for contractor acceptance.</b></p></div>'}<button class="btn" style="margin-top:12px" onclick="go('ordersPage')">View orders →</button></div>`;
+  toast('Order saved.');
+}
+
+function beginBag(type, btn){
+  $('bagChoices').classList.add('hidden'); currentBagType=type; document.querySelectorAll('#bagsPage .choice').forEach(x=>x.classList.remove('sel')); btn.classList.add('sel');
+  $('bagFlow').classList.remove('hidden'); $('bagDone').innerHTML=''; $('lidQR').value=''; $('bagQR').value=''; $('boxLocked').checked=false;
+  $('bagCodeText').textContent = type==='first' ? 'Access code is sent in the live app.' : 'Secure $10 payment and code in live app.';
+  showBagStep('intro');
+}
+function showBagStep(step){
+  if(step==='lock' && !$('lidQR').value.trim()){ toast('Scan the QR under the lid first.'); return; }
+  if(step==='scanbag' && !$('boxLocked').checked){ toast('Confirm you shut and locked the box.'); return; }
+  $('bagIntro').classList.toggle('hidden', step!=='intro'); $('bagLid').classList.toggle('hidden', step!=='lid'); $('bagLock').classList.toggle('hidden', step!=='lock'); $('bagScan').classList.toggle('hidden', step!=='scanbag');
+  window.scrollTo(0,0);
+}
+function claimBag(){
+  if(!profile.name){ toast('Create your account first.'); go('profilePage'); return; }
+  const bag = $('bagQR').value.trim().toUpperCase();
+  if(!/^CRC-\d{4,}$/.test(bag)){ toast('Use a bag QR like CRC-0001.'); return; }
+  const claimedAt = new Date().toISOString();
+  const due = new Date(Date.now()+24*60*60*1000).toLocaleString();
+  const rec={bagId:bag,type:currentBagType,claimedAt,firstOrderDue:currentBagType==='first'?due:'',status:currentBagType==='first'?'Claimed · return with first order in 24 hrs':'Extra bag purchased'};
+  bags.unshift(rec); write('crc_picto_bags', bags);
+  $('bagDone').innerHTML=`<div class="card"><span class="pill">BAG CLAIMED</span><div class="step"><div class="big">🖤</div><p><b>${bag}</b><br>${currentBagType==='first'?'First bag claimed.':'Extra bag claimed.'}</p></div><div class="step"><div class="big">🔒</div><p><b>Box locked.</b></p></div>${currentBagType==='first'?`<div class="warn"><b>Bring this bag back with your first order within 24 hours.</b><br>If not, a $10 bag charge applies.<br>Return by: <b>${due}</b></div>`:''}<button class="btn" style="margin-top:12px" onclick="go('scanPage')">Go to scan →</button></div>`;
+  toast('Bag claimed.');
+}
+
+function calcDue(iso){
+  const d=new Date(iso), day=d.getDay(), hour=d.getHours(), before=hour<14 || (hour===14 && d.getMinutes()===0); let add;
+  if(day===1) add=before?1:2; else if(day===2) add=before?1:2; else if(day===3) add=before?2:5; else if(day===4) add=before?1:4; else if(day===5) add=3; else if(day===6) add=2; else add=1;
+  d.setDate(d.getDate()+add); d.setHours(17,0,0,0);
+  return d.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+}
+let scanMode=null, guidedBagId='', selectedPickupId=null;
+function ownedOrder(o){return !!profile.phone && o.ownerPhone===profile.phone;}
+function isReady(o){return ownedOrder(o) && o.service==='drop' && o.status==='Ready for paid pickup' && o.paymentVerified===true && o.readyForPickup===true && !!o.bagId && !o.pickedUpAt;}
+function readyOrders(){return orders.filter(isReady);}
+function showReadyOrders(){
+  const ready=readyOrders();
+  $('readyList').innerHTML=ready.length?ready.map(o=>`<button class="choice" type="button" style="display:block;width:100%;margin:9px 0" onclick="selectPickupOrder('${o.id}')"><span class="icon">🖤</span><strong>${o.bagId}</strong><small>Order ${o.id} · Paid &amp; ready</small><span class="cost">Select order →</span></button>`).join(''):'<div class="note"><b>No paid, ready orders yet.</b><br>Check My Orders or wait for your ready notification.</div>';
+  showScanStep('ready');
+}
+function startScan(mode){
+  scanMode=mode;guidedBagId='';selectedPickupId=null;$('guidedBag').value='';$('guidedWall').value='';$('scanDone').innerHTML='';
+  $('scanChoice').classList.add('hidden');$('scanFlow').classList.remove('hidden');
+  if(mode==='pickup')showReadyOrders();else{$('scanProgress').textContent='STEP 1 OF 2';showScanStep('bag');}
+}
+function resetScan(){$('ratingArea').classList.add('hidden');$('ratingArea').innerHTML='';scanMode=null;guidedBagId='';selectedPickupId=null;$('scanFlow').classList.add('hidden');$('scanChoice').classList.remove('hidden');$('scanDone').innerHTML='';window.scrollTo(0,0);}
+function showScanStep(which){$('scanReadyStep').classList.toggle('hidden',which!=='ready');$('scanBagStep').classList.toggle('hidden',which!=='bag');$('scanWallStep').classList.toggle('hidden',which!=='wall');$('scanPickupStep').classList.toggle('hidden',which!=='pickup');window.scrollTo(0,0);}
+function selectPickupOrder(id){
+ const o=readyOrders().find(x=>x.id===id);if(!o){showReadyOrders();toast('This order is not ready for pickup.');return;}
+ selectedPickupId=id;$('guidedBag').value='';$('bagMismatch').classList.add('hidden');$('scanProgress').textContent='SCAN TO VERIFY';$('pickupMatchWarning').classList.add('hidden');
+ $('scanBagStep').querySelector('.step p').innerHTML='<b>Scan bag '+o.bagId+'.</b><br><span class="muted">Order '+o.id+'</span>';
+ showScanStep('bag');
+}
+function scanBagNext(){
+ let bag=$('guidedBag').value.trim().toUpperCase();if(!/^CRC-\d{4,}$/.test(bag)){toast('Scan the QR on your black bag.');return;}
+ if(scanMode==='pickup'){
+   const order=readyOrders().find(o=>o.id===selectedPickupId);
+   if(!order){showReadyOrders();toast('Pickup is not available for this order.');return;}
+   if(bag!==order.bagId){$('bagMismatch').classList.remove('hidden');toast('Wrong bag. Please scan again.');return;}
+   guidedBagId=bag;$('bagMismatch').classList.add('hidden');$('pickupMatchWarning').classList.add('hidden');$('pickupCheckNumber').textContent='✓ '+bag+' · Order '+order.id+' · Paid & ready';showScanStep('pickup');return;
+ }
+ if(bags.length&&!bags.some(x=>x.bagId===bag)){toast('This bag is not linked to this account.');return;}
+ guidedBagId=bag;const order=orders.find(o=>ownedOrder(o)&&o.service==='drop'&&(o.status==='Awaiting shop scan'||o.status==='Requested'));
+ if(!order){toast('Book a drop-off order first.');return;}showScanStep('wall');
+}
+function finishDropoff(){
+ const wall=$('guidedWall').value.trim();if(!wall){toast('Scan the wall QR first.');return;}
+ const order=orders.find(o=>ownedOrder(o)&&o.service==='drop'&&(o.status==='Awaiting shop scan'||o.status==='Requested'));
+ if(!order){toast('No open drop-off order.');return;}
+ order.bagId=guidedBagId;order.droppedAt=new Date().toISOString();order.readyBy=calcDue(order.droppedAt);order.status='Dropped off · demo';write('crc_picto_orders',orders);renderOrders();
+ const claimed=bags.find(x=>x.bagId===guidedBagId);if(claimed){claimed.firstReturnedAt=order.droppedAt;write('crc_picto_bags',bags);}
+ $('scanFlow').classList.add('hidden');$('scanDone').innerHTML=`<div class="card"><span class="pill">ALL DONE</span><div class="step"><div class="big">✅</div><p><b>Drop-off recorded.</b><br>${guidedBagId}</p></div><div class="step"><div class="big">🧺</div><p><b>Put bag in dirty laundry bin.</b></p></div><button class="btn secondary" style="margin-top:12px" onclick="resetScan()">Done</button></div>`;toast('Demo drop-off recorded.');
+}
+function finishPickup(){
+ const o=readyOrders().find(x=>x.id===selectedPickupId);
+ if(!o||o.bagId!==guidedBagId||$('guidedBag').value.trim().toUpperCase()!==o.bagId){showReadyOrders();toast('Bag or pickup status did not match.');return;}
+ o.pickedUpAt=new Date().toISOString();o.status='Picked up · customer verified';write('crc_picto_orders',orders);renderOrders();
+ $('scanFlow').classList.add('hidden');$('scanDone').innerHTML='';showThankYou(o.id);
+}
+let feedbackOrderId=null, selectedStars=0;
+function showThankYou(id){
+ feedbackOrderId=id;selectedStars=0;
+ $('ratingArea').classList.remove('hidden');
+ $('ratingArea').innerHTML=`<div class="card feedback"><span class="pill">ORDER COMPLETE</span><div style="text-align:center;font-size:47px">✓</div><h2 class="intro" style="text-align:center">Thank you!</h2><p class="muted" style="text-align:center">We appreciate your business.</p><div class="note" style="text-align:center">How was your service?</div><div class="stars" id="ratingStars" aria-label="Rate service from 1 to 5 stars">${[1,2,3,4,5].map(n=>`<button type="button" aria-label="${n} star${n===1?'':'s'}" onclick="selectStars(${n})">★</button>`).join('')}</div><label>Any feedback? (optional)<input id="ratingNote" maxlength="240" placeholder="Tell us what you think"></label><button class="btn" onclick="saveRating()">Submit rating →</button><button class="btn secondary" style="margin-top:10px" onclick="skipRating()">Not now</button></div>`;
+}
+function selectStars(n){selectedStars=n;document.querySelectorAll('#ratingStars button').forEach((b,i)=>{b.classList.toggle('sel',i<n);b.setAttribute('aria-pressed',String(i<n));});}
+function saveRating(){
+ if(!feedbackOrderId)return;
+ if(selectedStars<1){toast('Tap a star to rate your service.');return;}
+ const o=orders.find(x=>x.id===feedbackOrderId && ownedOrder(x) && x.pickedUpAt);
+ if(!o){toast('Completed order not found.');return;}
+ if(o.rating){toast('This order is already rated.');return;}
+ o.rating={stars:selectedStars,note:$('ratingNote').value.trim(),submittedAt:new Date().toISOString()};
+ write('crc_picto_orders',orders);renderOrders();
+ $('ratingArea').innerHTML='<div class="card" style="text-align:center"><div style="font-size:40px">⭐</div><h2 class="intro">Thanks for rating us!</h2><button class="btn" onclick="resetScan();go(&quot;homePage&quot;)">Done ✓</button></div>';
+}
+function skipRating(){$('ratingArea').innerHTML='<div class="card" style="text-align:center"><h2 class="intro">Thank you!</h2><button class="btn" onclick="resetScan();go(&quot;homePage&quot;)">Done ✓</button></div>';}
+function renderRatingStats(){
+ const rated=orders.filter(o=>ownedOrder(o)&&o.rating&&o.pickedUpAt);
+ const avg=rated.length?(rated.reduce((sum,o)=>sum+o.rating.stars,0)/rated.length).toFixed(1):'—';
+ $('ratingStats').innerHTML=rated.length?`<b>${rated.length} rating${rated.length===1?'':'s'} · ${avg}/5 average</b><div style="margin-top:9px">${[5,4,3,2,1].map(n=>`<div class="line"><span>${n} ★</span><strong>${rated.filter(o=>o.rating.stars===n).length}</strong></div>`).join('')}</div><div class="caption" style="margin-top:8px">Feedback stored locally in this browser for testing. Management reporting needs a shared database.</div>`:'No ratings yet. Ratings appear after completed pickups.';
+}
+function demoMakeReady(){
+ const o=orders.find(x=>ownedOrder(x)&&x.service==='drop'&&x.bagId&&!x.pickedUpAt);
+ if(!o){toast('First book and check in a drop-off bag.');return;}
+ o.status='Ready for paid pickup';o.paymentVerified=true;o.readyForPickup=true;o.demoPayment=true;write('crc_picto_orders',orders);renderOrders();toast('Demo only: marked paid and ready.');
+}
+function weightReferenceHTML(o){let records={};try{records=JSON.parse(localStorage.getItem('crc_shared_scale_photos')||'{}')}catch(e){}let r=records[o.bagId];if(!r||!Number(r.lbs))return '';return `<div class="note" style="margin-top:10px"><b>⚖️ Your recorded laundry weight: ${Number(r.lbs).toFixed(1)} lb</b><div class="caption">Rounded up to the nearest ½ lb · ${new Date(r.weighedAt).toLocaleString()}</div></div>`;}
+function sharedProgress(o){try{const p=JSON.parse(localStorage.getItem('crc_shared_job_progress')||'{}')[o.bagId];return p&&o.bagId?p:null;}catch(e){return null;}}
+function visibleOrderStatus(o){const p=sharedProgress(o);if(!p||o.pickedUpAt||o.paymentVerified||o.readyForPickup)return o.status;return p.status||o.status;}
+function progressNote(o){const p=sharedProgress(o);if(!p)return '';if(o.pickedUpAt)return '';if(p.status==='Washing')return '<div class="note" style="margin-top:8px"><b>🫧 Your laundry is being washed.</b><div class="caption">Checked out by contractor · '+new Date(p.checkedOutAt).toLocaleString()+'</div></div>';if(p.returnedAt)return '<div class="note" style="margin-top:8px"><b>✅ Laundry finished and returned to shop.</b><div class="caption">Payment and pickup release are separate. Wait for Paid & Ready before collecting.</div></div>';return '';}
+function renderOrders(){
+  renderRatingStats();
+  const mine=orders.filter(ownedOrder);if(!mine.length){ $('ordersList').innerHTML='<div class="muted">No orders yet.</div>'; return; }
+  $('ordersList').innerHTML=mine.map(o=>`<div class="card order"><div class="line"><strong>${o.id}</strong><span class="tag">${visibleOrderStatus(o)}</span></div><div class="muted" style="margin-top:6px">${o.service==='drop'?'Drop Off':'Pick Up From Me'} · ${o.bagId||'Bag not linked yet'}</div><div class="caption" style="margin-top:6px">${o.turn}${o.droppedAt?' · Dropped '+new Date(o.droppedAt).toLocaleString():''}${o.readyBy?' · Ready '+o.readyBy:''}${o.pickedUpAt?' · Picked up '+new Date(o.pickedUpAt).toLocaleString():''}</div>${weightReferenceHTML(o)}${progressNote(o)}</div>`).join('');
+}
+
+window.addEventListener('focus',()=>{orders=read('crc_picto_orders',orders);renderOrders();});
+(function init(){
+  fillProfile(); renderOrders();
+  if(profile.name){ $('returnName').textContent=profile.name; $('entryTitle').textContent='Welcome back'; $('entryText').textContent='Your customer app is ready.'; $('returning').classList.remove('hidden'); $('newUser').classList.add('hidden'); }
+  if(!profile.name){ profile={name:'Test Customer',phone:'3255550100',email:'',address:'Sweetwater, TX',detergent:'Use Cotton Roots detergent'}; fillProfile(); }
+  $('entry').classList.add('hidden'); go('homePage');
+})();
+</script>
+</body>
+</html>
