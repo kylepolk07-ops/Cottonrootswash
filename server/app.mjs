@@ -10,11 +10,14 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false}={}) {
  if(remoteOrigin){
   const url=new URL(remoteOrigin);
   if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
   if(typeof stagingUser!=='string'||!stagingUser||stagingUser.includes(':')||typeof stagingPassword!=='string'||stagingPassword.length<24)throw Error('Private staging credentials required (password minimum 24 characters)');
+ }
+ for(const [username,password] of Object.entries(fixturePasswords)){
+  if(!['customer','contractor','owner'].includes(username)||typeof password!=='string'||password.length<24||password.length>256)throw Error('Invalid synthetic fixture password configuration');
  }
  const gate=remoteOrigin?hash(stagingUser+':'+stagingPassword):null;
  const cookieSecurity=remoteOrigin?'; Secure':'';
@@ -28,7 +31,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
  if(!row && fixtures){
   const accounts=['customer','customer2','contractor','contractor2','owner'].map(role=>{
-   const password=token().slice(0,24),salt=token();const id=role;
+   const password=fixturePasswords[role]||token().slice(0,24),salt=token();const id=role;
    state.users.push({id,username:role,role:role.replace(/2$/,''),salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:role.startsWith('contractor'),days:[],preference:'both'});
    return {id,username:role,role:role.replace(/2$/,''),password};
   });
@@ -93,13 +96,17 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const session=sid&&sessions.get(hash(sid));if(!session||session.expires<Date.now())fail(401,'Sign in required');
    const user=state.users.find(u=>u.id===session.userId);if(!user)fail(401,'Sign in required');
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,staging:{synthetic:true,disposable}});
     if(path==='/api/orders')return send(200,{orders:state.orders.filter(o=>visible(o,user)).map(o=>{
      const v=publicOrder(o);if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;}return v;
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id).map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
     if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>({order_id:o.id,pounds:o.billed_pounds,amount:o.billed_pounds,status:'pending',note:'No payments or payouts connected'}))});
+    if(path==='/api/management/test-kit'){
+     if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
+     return send(200,{synthetic:true,bagToken:state.bags[0]?.token,stationToken:state.stationToken});
+    }
     if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),orders:state.orders.map(publicOrder),audit:state.audit})}
     fail(404,'Not found');
    }

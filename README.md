@@ -19,6 +19,12 @@ On first startup random fixture credentials and test QR tokens are written to `.
 
 Railway deployment configuration and a password gate are now prepared. See `docs/RAILWAY_STAGING.md`. No provider account is connected and no hosted URL exists yet. Remote mode requires HTTPS, persistent `/data`, one replica and random private gate credentials; it fails closed if configuration is incomplete. Local commands below continue to bind to loopback.
 
+## Phone testing during a hosting outage
+
+Render fallback configuration is in `render.yaml` on `staging/phone-trial`; see `docs/RENDER_TRIAL.md`. It requests a free disposable synthetic trial and still needs owner account authorization/current-plan review. Data may reset. Generated private role passwords remove the need for shell access. Owner Management supplies sample bag/station codes for the phone workflow; passwords are never returned by the API. No Render deployment has been created or verified.
+
+A noninteractive phone-readable PDF of actual tested screens is available in the task artifacts. Recreate with the scripts in `docs/PHONE_WALKTHROUGH_REPORT.md`. It is a visual walkthrough, not a live app.
+
 ## Try the workflow
 
 1. Customer: My bags → claim the synthetic bag using `bagToken` from the private fixture file. Acknowledge taking the bag and physically closing the box. The acknowledgment does not verify a physical lock.

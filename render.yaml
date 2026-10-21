@@ -1,0 +1,24 @@
+# Account authorization required. Verify Render's displayed free-plan terms before applying.
+services:
+  - type: web
+    name: cotton-roots-private-trial
+    runtime: docker
+    plan: free
+    branch: staging/phone-trial
+    numInstances: 1
+    healthCheckPath: /healthz
+    envVars:
+      - key: CRC_DEPLOYMENT
+        value: render
+      - key: CRC_EPHEMERAL_TEST
+        value: "1"
+      - key: CRC_STAGING_USER
+        value: trial
+      - key: CRC_STAGING_PASSWORD
+        generateValue: true
+      - key: CRC_CUSTOMER_PASSWORD
+        generateValue: true
+      - key: CRC_CONTRACTOR_PASSWORD
+        generateValue: true
+      - key: CRC_OWNER_PASSWORD
+        generateValue: true

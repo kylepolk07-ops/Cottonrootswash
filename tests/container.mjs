@@ -8,10 +8,15 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 const docker=(...args)=>execFileSync('docker',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+const render=process.argv.includes('--render');
 const name='cotton-test-'+randomBytes(6).toString('hex'),volume=name+'-data';
 const temp=mkdtempSync(join(tmpdir(),'cotton-container-')),envFile=join(temp,'private.env');
-const origin='https://cotton-test.up.railway.app',password=randomBytes(32).toString('hex');
-writeFileSync(envFile,`CRC_DEPLOYMENT=railway\nCRC_DATA_DIR=/data\nRAILWAY_VOLUME_MOUNT_PATH=/data\nCRC_PUBLIC_ORIGIN=${origin}\nCRC_STAGING_USER=staging\nCRC_STAGING_PASSWORD=${password}\nPORT=3000\n`,{mode:0o600});
+const origin=render?'https://cotton-test.onrender.com':'https://cotton-test.up.railway.app',password=randomBytes(32).toString('hex');
+const customerPassword=randomBytes(32).toString('hex');
+const contractorPassword=randomBytes(32).toString('hex');
+const ownerPassword=randomBytes(32).toString('hex');
+const trialEnv=`CRC_DEPLOYMENT=render\nCRC_EPHEMERAL_TEST=1\nRENDER_EXTERNAL_URL=${origin}\nCRC_STAGING_USER=staging\nCRC_STAGING_PASSWORD=${password}\nCRC_CUSTOMER_PASSWORD=${customerPassword}\nCRC_CONTRACTOR_PASSWORD=${contractorPassword}\nCRC_OWNER_PASSWORD=${ownerPassword}\nPORT=3000\n`;
+writeFileSync(envFile,render?trialEnv:`CRC_DEPLOYMENT=railway\nCRC_DATA_DIR=/data\nRAILWAY_VOLUME_MOUNT_PATH=/data\nCRC_PUBLIC_ORIGIN=${origin}\nCRC_STAGING_USER=staging\nCRC_STAGING_PASSWORD=${password}\nPORT=3000\n`,{mode:0o600});
 let base,csrf,cookie;
 const headers={authorization:'Basic '+Buffer.from('staging:'+password).toString('base64'),Host:new URL(origin).host,'x-forwarded-proto':'https'};
 async function request(path,body,extra={}){
@@ -27,11 +32,13 @@ async function request(path,body,extra={}){
 async function ready(){for(let i=0;i<100;i++){try{if((await request('/healthz')).status===200)return}catch{}await new Promise(r=>setTimeout(r,100))}throw Error('Container not ready')}
 try{
  docker('volume','create',volume);
- docker('run','-d','--name',name,'--env-file',envFile,'-v',volume+':/data','-p','127.0.0.1::3000','cotton-roots-private-staging:review');
+ const launch=()=>docker('run','-d','--name',name,'--env-file',envFile,...(render?[]:['-v',volume+':/data']),'-p','127.0.0.1::3000','cotton-roots-private-staging:review');
+ launch();
  const port=docker('port',name,'3000/tcp').split(':').pop();base='http://127.0.0.1:'+port;await ready();
  const status=docker('exec',name,'cat','/proc/1/status');assert.match(status,/Uid:\s+1000\s+1000\s+1000\s+1000/);assert.match(status,/Gid:\s+1000\s+1000\s+1000\s+1000/);assert.match(status,/Groups:\s*\n/);
- const fixtures=JSON.parse(docker('exec',name,'cat','/data/fixtures.json'));
+ const fixtures=JSON.parse(docker('exec',name,'cat',render?'/tmp/cotton-roots-trial/fixtures.json':'/data/fixtures.json'));
  const user=fixtures.accounts.find(a=>a.username==='customer');
+ if(render)assert.equal(user.password,customerPassword);
  async function login(){const r=await request('/api/login',{username:user.username,password:user.password});assert.equal(r.status,200,JSON.stringify(r.data));assert.match(r.headers.get('set-cookie'),/; Secure/);csrf=r.data.csrf;cookie=r.headers.get('set-cookie').split(';')[0]}
  await login();
  assert.equal((await request('/api/claim',{bagToken:fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true})).status,200);
@@ -39,7 +46,17 @@ try{
  docker('restart',name);base='http://127.0.0.1:'+docker('port',name,'3000/tcp').split(':').pop();await ready();await login();
  const orders=await request('/api/orders',undefined,{cookie});assert.equal(orders.status,200);assert.equal(orders.data.orders[0].id,order.data.order.id);
  assert.equal((await request('/api/management',undefined,{cookie})).status,403);
- console.log('PASS container: mounted-volume startup, UID/GID 1000 with no supplementary groups, gated HTTPS-mode login, Secure cookie, persistent claim/order after restart, role denial.');
+ if(render){
+  assert.equal((await request('/api/me',undefined,{cookie})).data.staging.disposable,true);
+  assert.equal((await request('/api/management/test-kit',undefined,{cookie})).status,403);
+  const ownerLogin=await request('/api/login',{username:'owner',password:ownerPassword});assert.equal(ownerLogin.status,200);
+  const ownerCookie=ownerLogin.headers.get('set-cookie').split(';')[0];
+  const kit=await request('/api/management/test-kit',undefined,{cookie:ownerCookie});assert.equal(kit.status,200);assert.equal(kit.data.bagToken,fixtures.bagToken);assert.equal(kit.data.stationToken,fixtures.stationToken);
+  docker('rm','-f',name);launch();base='http://127.0.0.1:'+docker('port',name,'3000/tcp').split(':').pop();await ready();await login();
+  const clean=await request('/api/orders',undefined,{cookie});assert.equal(clean.status,200);assert.deepEqual(clean.data.orders,[]);
+  console.log('PASS Render disposable container: injected credentials, owner-only synthetic kit, disposable warning metadata, recreated-container reset with stable configured sign-in.');
+ }
+ console.log('PASS '+(render?'disposable Render':'persistent Railway')+' container: UID/GID 1000 with no supplementary groups, gated HTTPS-mode login, Secure cookie, claim/order after warm restart, role denial.');
 }catch(error){
  console.error('Container diagnostics:',docker('logs',name));throw error;
 }finally{
