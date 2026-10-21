@@ -13,7 +13,7 @@ Private single-process synthetic staging: separate Customer and Contractor mobil
 
 ## Needed to try on a phone remotely
 
-An authorized private staging host/account and deployment access. No connected hosting tool or verified destination is available. Do not expose this loopback server unchanged: remote staging requires HTTPS, secure cookies, host/origin configuration, access restrictions and separate synthetic fixtures. Owner may connect the intended provider securely; never paste credentials into chat. No purchase or public launch is authorized.
+An authorized private staging host/account and deployment access. No connected hosting tool or verified destination is available. Remote-mode HTTPS origin checks, Secure cookies, private access gate, container packaging and volume requirements are now implemented and locally tested. The actual Railway account/edge/domain/volume still must be authorized and tested; see RAILWAY_STAGING.md. Owner may connect the intended provider securely; never paste credentials into chat. No purchase or public launch is authorized.
 
 ## Remaining implementation
 
@@ -30,3 +30,7 @@ An authorized private staging host/account and deployment access. No connected h
 ## Owner decisions
 
 Only staging account authorization is needed to proceed toward a phone-accessible private test. Financial authorization, production launch and real identity collection remain separately approval-gated. No credentials are requested in chat. There is no automatic overnight work scheduler: progress happens while an agent turn is active; saved code and reports persist between turns.
+
+## Railway preparation update
+
+Owner chose Railway preparation and reports no account yet. No paid resources created. Private deployment files and runbook are prepared; account signup/authorization remains the external prerequisite. Container/local test evidence and independent review are recorded in WORK_LOG.md and DEPLOYMENT_REVIEW.md.

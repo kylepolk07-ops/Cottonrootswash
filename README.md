@@ -15,6 +15,10 @@ The server binds only to loopback port 3000. Open the Customer path `/customer` 
 
 On first startup random fixture credentials and test QR tokens are written to `.runtime/fixtures.json` with private file permissions. Read this file locally; never commit or share it. Accounts are `customer`, `customer2`, `contractor`, `contractor2`, and `owner`. Management is on the Contractor app after signing in as `owner`. There is no default shared password. Restarting preserves accounts/orders but requires signing in again.
 
+## Private remote staging preparation
+
+Railway deployment configuration and a password gate are now prepared. See `docs/RAILWAY_STAGING.md`. No provider account is connected and no hosted URL exists yet. Remote mode requires HTTPS, persistent `/data`, one replica and random private gate credentials; it fails closed if configuration is incomplete. Local commands below continue to bind to loopback.
+
 ## Try the workflow
 
 1. Customer: My bags → claim the synthetic bag using `bagToken` from the private fixture file. Acknowledge taking the bag and physically closing the box. The acknowledgment does not verify a physical lock.

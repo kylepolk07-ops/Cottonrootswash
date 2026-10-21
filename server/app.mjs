@@ -10,7 +10,14 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null}={}) {
+ if(remoteOrigin){
+  const url=new URL(remoteOrigin);
+  if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
+  if(typeof stagingUser!=='string'||!stagingUser||stagingUser.includes(':')||typeof stagingPassword!=='string'||stagingPassword.length<24)throw Error('Private staging credentials required (password minimum 24 characters)');
+ }
+ const gate=remoteOrigin?hash(stagingUser+':'+stagingPassword):null;
+ const cookieSecurity=remoteOrigin?'; Secure':'';
  mkdirSync(dataDir,{recursive:true,mode:0o700});
  chmodSync(dataDir,0o700);
  const db=new DatabaseSync(resolve(dataDir,'staging.sqlite'));
@@ -37,7 +44,20 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   const headers={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",'Permissions-Policy':'camera=(self), microphone=(), geolocation=()'};
   const send=(status,data)=>{res.writeHead(status,headers);res.end(JSON.stringify(data))};
   try{
-   if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
+   const remoteHost=remoteOrigin?new URL(remoteOrigin).host:null;
+   const requestHost=req.headers.host||'';
+   const isLoopback=/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(requestHost);
+   if(remoteOrigin){
+    const healthProbe=req.url==='/healthz'&&req.method==='GET'&&(requestHost===remoteHost||isLoopback||requestHost==='healthcheck.railway.app');
+    if(healthProbe){db.prepare('SELECT 1').get();return send(200,{ok:true})}
+    if(requestHost!==remoteHost&&!isLoopback)fail(403,'Host rejected');
+    if(requestHost!==remoteHost)fail(403,'Remote host required');
+    if(req.headers['x-forwarded-proto']!=='https')fail(403,'HTTPS required');
+    headers['Strict-Transport-Security']='max-age=31536000';
+    const auth=req.headers.authorization;
+    const supplied=typeof auth==='string'&&auth.startsWith('Basic ')?Buffer.from(auth.slice(6),'base64').toString('utf8'):'';
+    if(!timingSafeEqual(Buffer.from(hash(supplied),'hex'),Buffer.from(gate,'hex'))){headers['WWW-Authenticate']='Basic realm="Cotton Roots private staging", charset="UTF-8"';fail(401,'Private staging access required')}
+   }else if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
    const url=new URL(req.url,'http://localhost'),path=url.pathname;
    if(!path.startsWith('/api/')){
     if(req.method!=='GET')fail(405,'Method not allowed');
@@ -52,7 +72,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    let body={};
    if(req.method==='POST'){
     const origin=req.headers.origin;
-    if(origin&&origin!==`http://${req.headers.host}`)fail(403,'Origin rejected');
+    if(origin&&origin!==(remoteOrigin||`http://${req.headers.host}`))fail(403,'Origin rejected');
     if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
     let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>16384)fail(413,'Request too large');chunks.push(chunk)}
     try{body=JSON.parse(Buffer.concat(chunks).toString())}catch{fail(400,'Invalid JSON')}
@@ -66,7 +86,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     for(const [key,value] of sessions)if(value.expires<now)sessions.delete(key);
     if(sessions.size>=1000)fail(429,'Session capacity reached');
     const sid=token(),csrf=token();sessions.set(hash(sid),{userId:u.id,csrf,expires:now+8*3600000});
-    headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`;
+    headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;
     send(200,{user:publicUser(u),csrf});return;
    }
    const sid=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('crc_session='))?.slice(12);
@@ -84,7 +104,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
-   if(path==='/api/logout'){sessions.delete(hash(sid));headers['Set-Cookie']='crc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0';return send(200,{ok:true})}
+   if(path==='/api/logout'){sessions.delete(hash(sid));headers['Set-Cookie']=`crc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${cookieSecurity}`;return send(200,{ok:true})}
    const requestKey=req.headers['idempotency-key'];if(typeof requestKey!=='string'||requestKey.length<8||requestKey.length>128)fail(400,'Idempotency-Key required');
    const key=user.id+':'+requestKey,fingerprint=hash(path+JSON.stringify(body));
    if(state.keys[key]){if(state.keys[key].fingerprint!==fingerprint)fail(409,'Key reused with different request');return send(200,state.keys[key].result)}
