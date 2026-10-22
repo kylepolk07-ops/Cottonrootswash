@@ -57,6 +57,14 @@ test('contractors submit their own pending login for owner approval',async t=>{
  const approved=await owner.request('/api/management/approve',{method:'POST',body:{userId:applicant.id,phoneConfirmed:true,inPersonConfirmed:true}});assert.equal(approved.status,200);assert.equal(approved.data.user.applicationStatus,'approved');
 });
 
+test('customers can review, verify, and later edit their profile',async t=>{
+ const h=await harness(t),customer=await h.client('customer');
+ assert.equal((await customer.request('/api/profile',{method:'POST',body:{action:'verify'}})).status,400);
+ const saved=await customer.request('/api/profile',{method:'POST',body:{displayName:'Kaylen Test',phone:'325-555-0199',email:'KAYLEN@example.com'}});assert.equal(saved.status,200);assert.equal(saved.data.user.email,'kaylen@example.com');assert.equal(saved.data.user.profileVerifiedAt,null);
+ const verified=await customer.request('/api/profile',{method:'POST',body:{action:'verify'}});assert.equal(verified.status,200);assert.ok(verified.data.user.profileVerifiedAt);
+ const edited=await customer.request('/api/profile',{method:'POST',body:{displayName:'Kaylen Test',phone:'325-555-0100',email:'kaylen@example.com'}});assert.equal(edited.status,200);assert.equal(edited.data.user.profileVerifiedAt,null);
+});
+
 test('authentication, CSRF, roles, protected resources and disabled sensitive features',async t=>{
  const h=await harness(t);
  assert.equal((await stat(h.dataDir)).mode&0o777,0o700);

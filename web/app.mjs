@@ -970,24 +970,22 @@ async function book() {
   });
 }
 async function profile() {
-  const me = await api("/api/me"),
-    c = card(
-      "👤",
-      "My account",
-      "Update the contact details the Cotton Roots team should use. Card numbers are handled only by Stripe, never stored here.",
-    );
-  const name = field(c, "Name", "text", me.user.displayName || ""),
-    phone = field(c, "Phone", "tel", me.user.phone || ""),
-    email = field(c, "Email", "email", me.user.email || "");
-  button(c, "Save contact details", async () => {
-    const result = await api("/api/profile", {
-      displayName: name.value,
-      phone: phone.value,
-      email: email.value,
-    });
-    user = result.user;
-    message("Contact details saved.");
-  });
+  const me=await api("/api/me");user=me.user;
+  const complete=Boolean(user.displayName&&user.phone?.length>=7&&user.email);
+  const showEditor=()=>{
+    reset();const c=card("✎","Edit my information","Keep this current so Cotton Roots can contact you about your laundry.");
+    const name=field(c,"Name","text",user.displayName||""),phone=field(c,"Phone","tel",user.phone||""),email=field(c,"Email","email",user.email||"");
+    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
+    if(complete)button(c,"Cancel",()=>route("profile"),true);
+  };
+  if(!complete)return showEditor();
+  const c=card("👤","My account",user.profileVerifiedAt?"Your contact information is complete and verified by you.":"Review everything below, then verify that it is correct.");
+  c.append(node("span",user.profileVerifiedAt?"✓ Verified":"Needs verification",{class:"pill"}));
+  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Contractor"],["Name",user.displayName],["Phone",user.phone],["Email",user.email]])details.append(node("dt",label),node("dd",value));c.append(details);
+  if(user.profileVerifiedAt)c.append(node("p",`Verified ${new Date(user.profileVerifiedAt).toLocaleString()}`,{class:"note"}));
+  else button(c,"Verify my information",async()=>{const result=await api("/api/profile",{action:"verify"});user=result.user;await route("profile");message("Your information is verified.")});
+  button(c,"Edit information",showEditor,true);
+  c.append(node("p","Payment cards are handled securely by Stripe and are never displayed or stored in this profile.",{class:"muted"}));
 }
 async function bags() {
   const { bags = [] } = await api("/api/bags");

@@ -61,7 +61,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  if(pickupMigration)save();
  const attempts=new Map();
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
@@ -265,11 +265,16 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      user.box_access_issued_at??=new Date().toISOString();
      result={accessCode:boxLockCode,issuedAt:user.box_access_issued_at,reusable:true,notice:'Scan the unique QR on the bag to register it to your account.'};
     }else if(path==='/api/profile'){
+     if(body.action==='verify'){
+      if(!user.displayName||!user.phone||user.phone.length<7||!user.email)fail(400,'Add your name, phone number, and email before verifying');
+      user.profile_verified_at=new Date().toISOString();result={user:publicUser(user)};
+     }else{
      const displayName=typeof body.displayName==='string'?body.displayName.trim():'';
      const phone=typeof body.phone==='string'?body.phone.trim():'';
      const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
      if(displayName.length>80||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');
-     user.displayName=displayName;user.phone=phone;user.email=email;result={user:publicUser(user)};
+     user.displayName=displayName;user.phone=phone;user.email=email;user.profile_verified_at=null;result={user:publicUser(user)};
+     }
     }else if(path==='/api/bags/exchange-request'){
      if(user.role!=='customer')fail(403,'Customer required');
      const bag=state.bags.find(b=>b.id===body.bagId&&b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(404,'Bag not found');
