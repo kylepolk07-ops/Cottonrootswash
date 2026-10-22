@@ -53,6 +53,8 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
  assert.equal(await h.hostileHost(),403);
  assert.equal((await h.anonymous('/api/orders')).status,401);
  const c=await h.client('customer'), other=await h.client('customer2'), owner=await h.client('owner');
+ assert.deepEqual((await c.request('/api/dashboard')).data.dashboard,{role:'customer',bagCount:0,activeOrders:0,completedOrders:0,nextOrder:null});
+ assert.equal((await owner.request('/api/dashboard')).data.dashboard.role,'management');
  denied(await c.request('/api/management'));
  const management=await owner.request('/api/management');assert.equal(management.status,200);assert.ok(Array.isArray(management.data.audit));
  denied(await c.request('/api/claim',{method:'POST',csrf:'invalid',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}}));
@@ -71,6 +73,25 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
  denied(await owner.request('/api/payments',{method:'POST',body:{orderId:o.id}}));
 });
 
+test('role dashboards summarize only authorized product data',async t=>{
+ const h=await harness(t),c=await h.client('customer'),other=await h.client('customer2'),contractor=await h.client('contractor'),owner=await h.client('owner');
+ const order=await setupOrder(h,c);
+ const customer=(await c.request('/api/dashboard')).data.dashboard;
+ assert.equal(customer.bagCount,1);assert.equal(customer.activeOrders,1);assert.equal(customer.nextOrder.id,order.id);
+ const stranger=(await other.request('/api/dashboard')).data.dashboard;
+ assert.equal(stranger.activeOrders,0);assert.equal(stranger.nextOrder,null);
+ const work=(await contractor.request('/api/dashboard')).data.dashboard;
+ assert.equal(work.role,'contractor');assert.equal(work.activeJobs,0);assert.equal(work.offers,0,'Awaiting customer drop-off is not an offer');
+ const scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};
+ assert.equal((await action(c,order.id,'drop_off',scan)).status,200);
+ assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
+ assert.equal((await action(contractor,order.id,'accept_job',{deadlineAcknowledged:true})).status,200);
+ const assigned=(await contractor.request('/api/dashboard')).data.dashboard;
+ assert.equal(assigned.nextJob.id,order.id);assert.equal(assigned.nextJob.customer_id,undefined);assert.equal(assigned.nextJob.detergent,undefined);
+ const management=(await owner.request('/api/dashboard')).data.dashboard;
+ assert.equal(management.role,'management');assert.equal(management.openOrders,1);
+});
+
 test('custody workflow rejects forged scans, unpaid pickup, duplicates and competing acceptance',async t=>{
  const h=await harness(t),c=await h.client('customer'),k=await h.client('contractor'),k2=await h.client('contractor2');
  const o=await setupOrder(h,c),scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};
@@ -78,6 +99,8 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  denied(await action(c,o.id,'drop_off',{...scan,stationToken:'forged'}));
  const key=randomUUID();
  const first=await action(c,o.id,'drop_off',scan,key);assert.equal(first.status,200,JSON.stringify(first.data));
+ assert.equal(o.due_at,null,'Booking must not guess a deadline before verified drop-off');
+ assert.match(first.data.order.due_at,/Z$/);assert.match(first.data.order.due_note,/verified shop drop-off/i);
  const repeat=await action(c,o.id,'drop_off',scan,key);assert.equal(repeat.status,200);assert.deepEqual(repeat.data,first.data);
  denied(await action(c,o.id,'drop_off',scan));
  const conflict=await action(c,o.id,'drop_off',{...scan,bagToken:'different'},key);assert.equal(conflict.status,409);

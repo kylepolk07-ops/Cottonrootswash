@@ -21,7 +21,7 @@ Railway deployment configuration and a password gate are now prepared. See `docs
 
 ## Phone testing during a hosting outage
 
-Render fallback configuration is in `render.yaml` on `staging/phone-trial`; see `docs/RENDER_TRIAL.md`. It requests a free disposable synthetic trial and still needs owner account authorization/current-plan review. Data may reset. Generated private role passwords remove the need for shell access. Owner Management supplies sample bag/station codes for the phone workflow; passwords are never returned by the API. No Render deployment has been created or verified.
+The owner created a free disposable Render trial at `https://cotton-roots-private-trial.onrender.com`; configuration is in `render.yaml` on `staging/phone-trial`. See `docs/RENDER_TRIAL.md`. Data may reset. Customer and Contractor can reuse the private preview code; owner Management keeps a separate generated password. Owner Management supplies sample bag/station codes for the phone workflow; passwords are never returned by the API.
 
 A noninteractive phone-readable PDF of actual tested screens is available in the task artifacts. Recreate with the scripts in `docs/PHONE_WALKTHROUGH_REPORT.md`. It is a visual walkthrough, not a live app.
 

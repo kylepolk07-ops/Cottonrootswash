@@ -2,11 +2,11 @@
 
 ## Available now
 
-Private single-process synthetic staging: separate Customer and Contractor mobile interfaces, Management gated by server role, shared authenticated API, private fixture accounts, SQLite persistence, CSRF and origin checks, custody rules, rounded weights, idempotency, audit, pending earnings, manual QR fallback. See README for test instructions. Source is saved on GitHub branch `staging/railway-private`; no public app deployment or provider account connection occurred.
+Private single-process synthetic staging: separate reference-style Customer and Contractor mobile interfaces, protected Management, role dashboards, guided custody steps, a shared authenticated API, SQLite persistence, CSRF/origin checks, Texas shop deadlines, rounded weights, idempotency, audit and pending earnings. A free disposable Render trial is owner-created; data may reset.
 
 ## Verified
 
-- 29 automated tests passed, no failed/skipped tests in the final run: business rules, custody, authorization, spoofed payment rejection, signed payment helper, idempotency, competing acceptance, restart persistence, request limits, Host/Origin, login throttling, runtime permissions, and audit redaction.
+- 35 automated tests passed with no failures or skips: business rules, role dashboards, custody, authorization, deadline scheduling, staging shortcut isolation, spoofed payment rejection, idempotency, request limits, Host/Origin, login throttling and audit redaction.
 - Headless Chromium phone-size full workflow passed repeatedly, including final lead rerun; no browser exceptions. Screenshots in ignored test-results/. Real device/camera behavior is untested.
 - Frozen install, server syntax and dependency audit passed. Runtime app has zero third-party dependencies; audit reported zero vulnerabilities. This is not a penetration test or blanket security assurance.
 - CI definition is included; its remote run result has not been verified. Source is pushed on `staging/railway-private`. Managed Postgres migration has not been applied.

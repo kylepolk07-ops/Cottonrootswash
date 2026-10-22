@@ -17,8 +17,10 @@ test('Render configuration fails closed and explicitly selects disposable synthe
   const missing={...env};delete missing[key];assert.throws(()=>runtimeConfig(missing),undefined,key);
  }
  for(const origin of ['http://cotton-test.onrender.com','https://cotton-test.onrender.com/','https://x:y@cotton-test.onrender.com'])assert.throws(()=>runtimeConfig({...env,RENDER_EXTERNAL_URL:origin}));
- assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'short'}));
- assert.doesNotThrow(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'twelve-chars'}));
+ assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'12345'}));
+ assert.doesNotThrow(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'482731'}));
+ assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'abcdef'}));
+ assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'1234567'}));
  for(const key of ['CRC_CUSTOMER_PASSWORD','CRC_CONTRACTOR_PASSWORD','CRC_OWNER_PASSWORD'])assert.throws(()=>runtimeConfig({...env,[key]:'short'}));
  for(const key of ['CRC_CUSTOMER_PASSWORD','CRC_CONTRACTOR_PASSWORD','CRC_OWNER_PASSWORD'])assert.throws(()=>runtimeConfig({...env,[key]:'x'.repeat(257)}));
  assert.throws(()=>runtimeConfig({...env,CRC_EPHEMERAL_TEST:'0'}));

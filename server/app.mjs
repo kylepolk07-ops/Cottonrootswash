@@ -5,6 +5,7 @@ import {mkdirSync,existsSync,writeFileSync,readFileSync,chmodSync} from 'node:fs
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {shopDateKey} from '../shared/calendar.mjs';
+import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal} from '../shared/rules.mjs';
@@ -16,8 +17,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  if(remoteOrigin){
   const url=new URL(remoteOrigin);
   if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
-  const stagingMinimum=disposable?12:24;
-  if(typeof stagingUser!=='string'||!stagingUser||stagingUser.includes(':')||typeof stagingPassword!=='string'||stagingPassword.length<stagingMinimum)throw Error(`Private staging credentials required (password minimum ${stagingMinimum} characters)`);
+  const validStagingPassword=typeof stagingPassword==='string'&&(disposable?/^\d{6}$/.test(stagingPassword)||stagingPassword.length>=24:stagingPassword.length>=24);
+  if(typeof stagingUser!=='string'||!stagingUser||stagingUser.includes(':')||!validStagingPassword)throw Error(disposable?'A six-digit private preview PIN is required':'Private staging credentials required (password minimum 24 characters)');
  }
  for(const [username,password] of Object.entries(fixturePasswords)){
   if(!['customer','contractor','owner'].includes(username)||typeof password!=='string'||password.length<24||password.length>256)throw Error('Invalid synthetic fixture password configuration');
@@ -60,6 +61,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(requestHost!==remoteHost)fail(403,'Remote host required');
     if(req.headers['x-forwarded-proto']!=='https')fail(403,'HTTPS required');
     headers['Strict-Transport-Security']='max-age=31536000';
+    if(req.method==='GET'&&req.url==='/trial-qr.png'){
+     headers['Content-Type']='image/png';headers['Cache-Control']='public, max-age=3600';
+     res.writeHead(200,headers);res.end(readFileSync(resolve(root,'web/trial-qr.png')));return;
+    }
+    if(req.method==='GET'&&req.url==='/trial-qr'){
+     headers['Content-Type']='text/html; charset=utf-8';headers['Cache-Control']='no-store';headers['Referrer-Policy']='no-referrer';
+     res.writeHead(200,headers);res.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotton Roots app QR</title><style>body{margin:0;background:#f8f0dc;color:#173f32;font:18px system-ui;text-align:center}main{max-width:520px;margin:auto;padding:32px 20px}img{display:block;width:min(82vw,420px);height:auto;margin:24px auto;background:white;padding:12px;border-radius:20px}p{line-height:1.5}a{color:#173f32;font-weight:700}</style></head><body><main><h1>Cotton Roots &amp; Co.</h1><p>Scan with your phone camera to open the private test app.</p><img src="/trial-qr.png" alt="QR code for the private Cotton Roots test app"><p>The QR contains only the website address. You will still need your private PIN.</p><p><a href="/access">Open the app on this device</a></p></main></body></html>');return;
+    }
     if(await privateAccess(req,res,headers))return;
    }else if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
    const url=new URL(req.url,'http://localhost'),path=url.pathname;
@@ -106,6 +115,25 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const user=state.users.find(u=>u.id===session.userId);if(!user)fail(401,'Sign in required');
    if(req.method==='GET'){
     if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,staging:{synthetic:true,disposable}});
+    if(path==='/api/dashboard'){
+     if(user.role==='customer'){
+      const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
+      const next=active.at(-1)||null;
+      return send(200,{dashboard:{role:'customer',bagCount:state.bags.filter(b=>b.customer_id===user.id).length,activeOrders:active.length,completedOrders:orders.filter(o=>o.status==='picked_up').length,nextOrder:next&&publicOrder(next)}});
+     }
+     if(user.role==='contractor'){
+      const visibleOrders=state.orders.filter(o=>visible(o,user)),jobs=visibleOrders.filter(o=>o.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(o.status));
+      const offers=visibleOrders.filter(o=>['at_shop','offered'].includes(o.status)&&!o.assigned_contractor_id);
+      const returned=state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at);
+      const nextJob=jobs[0]?publicOrder(jobs[0]):null;if(nextJob){delete nextJob.customer_id;delete nextJob.detergent}
+      return send(200,{dashboard:{role:'contractor',approved:user.approved,availableDays:user.days.length,offers:offers.length,activeJobs:jobs.length,pendingPay:Number(returned.reduce((sum,o)=>sum+(o.billed_pounds||0),0).toFixed(2)),nextJob}});
+     }
+     if(staff(user)){
+      const now=Date.now(),open=state.orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
+      return send(200,{dashboard:{role:'management',customers:state.users.filter(u=>u.role==='customer').length,contractors:state.users.filter(u=>u.role==='contractor').length,openOrders:open.length,paymentHolds:open.filter(o=>['payment_pending','paid_hold'].includes(o.status)).length,overdue:open.filter(o=>o.due_at&&Date.parse(o.due_at)<now&&!o.returned_at).length}});
+     }
+     fail(403,'Dashboard unavailable');
+    }
     if(path==='/api/orders')return send(200,{orders:state.orders.filter(o=>visible(o,user)).map(o=>{
      const v=publicOrder(o);if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;}return v;
     })});
@@ -138,7 +166,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(body.service==='full_service')fail(409,'Home collection routing is not yet available');
      const bag=state.bags.find(b=>b.customer_id===user.id);if(!bag)fail(409,'Claim a bag first');
      if(state.orders.some(o=>o.bag_id===bag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Bag already has an active order');
-     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,created_at:new Date().toISOString(),due_at:new Date(Date.now()+3*86400000).toISOString(),due_note:'Synthetic staging deadline; business calendar not connected'};
+     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,created_at:new Date().toISOString(),due_at:null,due_note:'Deadline is set from the verified shop drop-off time.'};
      state.orders.push(order);result={order};
     }else if(path==='/api/availability'){
      if(user.role!=='contractor')fail(403,'Contractor required');
@@ -162,6 +190,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       if(action===ACTION.WEIGH&&(typeof body.measuredPounds!=='number'||body.measuredPounds>200))fail(400,'Weight must be at most 200 lb');
       if(action===ACTION.WASH_COMPLETE&&o.wash_completed_at||action===ACTION.RETURN_BAG&&o.return_bag_scanned_at)fail(409,'Scan already recorded');
       let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
+      if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
       if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved);
       state.orders[index]=updated;result={order:publicOrder(updated)};
      }

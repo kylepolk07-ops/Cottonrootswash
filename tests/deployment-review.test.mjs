@@ -27,6 +27,9 @@ async function harness(t){
 test('independent remote review: health reveals no app data; all app routes require private gate',async t=>{
  const {request,fixtures}=await harness(t);
  const health=await request('/healthz',{headers:{host:'localhost'}});assert.equal(health.status,200);assert.deepEqual(JSON.parse(health.text),{ok:true});
+ const qrPage=await request('/trial-qr');assert.equal(qrPage.status,200);assert.match(qrPage.headers['content-type'],/^text\/html/);assert.match(qrPage.text,/never contains|website address/i);
+ const qrImage=await request('/trial-qr.png');assert.equal(qrImage.status,200);assert.equal(qrImage.headers['content-type'],'image/png');assert.ok(qrImage.text.length>100);
+ for(const sensitive of [stagingPassword,fixtures.bagToken,...fixtures.accounts.map(a=>a.password)])assert.ok(!qrPage.text.includes(sensitive));
  for(const path of ['/customer','/contractor','/web/app.mjs','/api/orders','/api/management','/.runtime/fixtures.json']){
   const r=await request(path);assert.equal(r.status,path.startsWith('/api/')?401:303,path);assert.equal(r.headers['www-authenticate'],undefined);if(r.status===303)assert.equal(new URL(r.headers.location,'https://test.invalid').pathname,'/access');
   for(const sensitive of [stagingPassword,fixtures.bagToken,...fixtures.accounts.map(a=>a.password)])assert.ok(!r.text.includes(sensitive));
@@ -35,6 +38,7 @@ test('independent remote review: health reveals no app data; all app routes requ
  assert.equal((await request('/customer',{headers:{authorization}})).status,200);
  assert.equal((await request('/api/orders',{headers:{authorization}})).status,401);
 });
+
 test('independent remote review: forwarded spoofing cannot bypass host; HTTPS and Origin enforced; sessions secure',async t=>{
  const {request,fixtures}=await harness(t);
  for(const host of ['attacker.example','localhost','127.0.0.1'])assert.equal((await request('/customer',{headers:{host,authorization,'x-forwarded-host':'private-staging.example'}})).status,403);

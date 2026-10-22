@@ -90,5 +90,50 @@ Final evidence for this update: npm test29/29 passed, zero failed/skipped; npm r
 
 # 2026-10-21 — Shorter disposable access code
 
-- Reduced only the disposable Render private-access code minimum from 24 to 12 characters for easier testing on phones.
+- Added a six-digit numeric PIN option for disposable Render testing, while accepting the existing generated long value during migration so deployment cannot lock out the owner. The access form remains rate limited and the shortcut remains unavailable to Management or persistent staging.
 - The same code remains limited to Customer and Contractor; owner/Management passwords retain the 24-character minimum.
+
+# 2026-10-21 — Phone link QR
+
+- Added a scannable QR for the private Render trial URL. It contains only the stable `/access` web address and never contains the private PIN or any account credential.
+
+# 2026-10-21 — Backend product depth
+
+- Contributor `/root/backend_product` added role-scoped dashboard summaries for the richer Customer, Contractor and Management experiences without exposing cross-account data.
+- Replaced the guessed three-day booking deadline with the build brief's Texas weekday/2 PM schedule, set only after verified shop drop-off. Added schedule, DST and API authorization tests.
+- Payment, payout, identity, home collection, holidays and notifications remain explicitly unconnected. Evidence and limits are in `docs/BACKEND_PRODUCT_REPORT.md`.
+
+# 2026-10-21 — Independent product experience coverage
+
+- Added a separate mobile Chromium check for the richer Customer dashboard, pictogram service choices, custody timeline, Contractor Today screen, distinct Offers/My jobs screens, pay summaries, and complete eight-step work guide.
+- The check also rejects undersized visible buttons, unlabeled visible form controls, horizontal mobile overflow, and uncaught browser errors.
+- It uses temporary synthetic fixtures and leaves the full custody/security flow in the existing browser suite. Actual iOS, Android, camera, and screen-reader testing remain outstanding.
+
+# 2026-10-21 — Independent security follow-up
+
+- `/root/security_followup` reviewed the shared disposable test-code shortcut and richer interface work for role escalation, private-gate bypass, unsafe HTML rendering, and accidental payment/identity enablement.
+- Added two focused HTTP tests proving the shortcut is gated, limited to exact Customer/Contractor fixtures in disposable mode, denied for owner/Management, and disabled for persistent staging.
+- Confirmed the completed richer frontend renders API values through text nodes and did not copy prototype `localStorage`, demo auth, or client payment flags. No payment-confirmation or identity-upload route was enabled.
+- Flagged excess Contractor dashboard disclosure during concurrent review; the backend contributor removed `customer_id` and detergent from that summary and added a regression check. Final server suite: 35/35 passed plus syntax checks.
+
+## 2026-10-22 — Reference-driven mobile product UI pass
+
+Contributor `/root/frontend`, assigned by lead `/root`, reviewed current served source against the imported Customer/Contractor visual references and BUILD_BRIEF. Concrete gap list and implementation/limits are centralized in `docs/FRONTEND_REPORT.md` (2026-10-22 addendum). No hosted-provider inspection claim.
+
+Changed `web/app.mjs`, `web/style.css`, and matching `tests/browser.mjs` navigation. Added default Home/Today dashboards with backend-authorized counts, illustrated large choice tiles, reference-style fixed bottom navigation, distinct Offers/My jobs, eight-step illustrated SOP, sequential bag→station and bag→weight confirmation screens, slider/numeric/live-rounded weight, custody timeline, pricing/detergent/rush details, booking review, bag/availability summaries, earnings totals and Management overview. Owner/staff normal landing stays protected Management. No browser storage authorization, payment bypass, identity upload or client-certified paid state added. Original references and server auth/security untouched.
+
+Verified syntax and repeatedly ran isolated mobile Chromium full custody workflow; after changed screen sequence it passed wrong-QR recovery, bag claim/booking/dropoff, availability/deadline acceptance, weight rounding, checkout/wash/later return, pending earnings, reload state and server Management denial. Independently generated Home/Today screenshots using synthetic fixtures and reviewed phone layout; corrected clipped bottom tabs and read-only dashboard wrapper handling. Product test contributor `/root/test_expansion` is notified of all route/label changes and reports separately. Real devices, physical scanning, assistive technology, provider deployment and payment-dependent pickup remain unverified. No third-party connections/dependencies/costs or actual sensitive data. Rollback: revert UI/test-navigation changes; no backend state/schema change from this contributor.
+
+## 2026-10-21 — Paired owner-advocate and mobile usability review
+
+- `/root/owner_advocate` and `/root/mobile_pair` challenged the richer interface against the owner's requirement for a modern, simple, illustrated, step-by-step product.
+- Agreed fixes cover forgiving sign-in, plain status labels, one-choice booking, one-task-first wizards, action-specific next-step confirmations, icon-assisted bottom navigation, focused feedback, readable disabled choices, 44px interactive targets, and 320px narrow-screen layout.
+- The requested preview QR is explicitly URL-only and never contains or bypasses the requested six-digit PIN. Actual PIN security is validated separately before any completion claim.
+- Full findings and remaining real-device limits are in `docs/MOBILE_USABILITY_REPORT.md`.
+
+# 2026-10-21 — Owner advocate and paired mobile review
+
+- A dedicated owner advocate compared the rebuilt app with the supplied reference prototypes and rejected technical copy, blank/case-sensitive trial usernames, raw backend statuses, duplicate service controls, detail-first wizards, generic success messages, and text-only cramped navigation.
+- Paired with the mobile usability reviewer before editing. Product language/flow changes are in `web/app.mjs`; mobile touch, focus, navigation and narrow-screen changes are in `web/style.css` and the independent product browser test.
+- `npm run check` and the product experience browser suite passed. The review requires the disposable six-digit PIN to be exactly numeric and the shareable QR to contain only the HTTPS access URL; Management retains its separate strong password.
+- Full rationale and remaining real-device limit: `docs/OWNER_ADVOCATE_REPORT.md`.

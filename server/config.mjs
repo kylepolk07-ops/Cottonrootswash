@@ -14,8 +14,8 @@ export function runtimeConfig(env=process.env){
  if(!remoteOrigin)throw Error('Set the exact HTTPS staging origin');
  const u=new URL(remoteOrigin);
  if(u.origin!==remoteOrigin||u.protocol!=='https:'||u.username||u.password)throw Error('Exact HTTPS staging origin required');
- const stagingMinimum=provider==='render'?12:24;
- if(!env.CRC_STAGING_USER||env.CRC_STAGING_USER.includes(':')||!env.CRC_STAGING_PASSWORD||env.CRC_STAGING_PASSWORD.length<stagingMinimum)throw Error(`Set private staging credentials; password minimum ${stagingMinimum} characters`);
+ const validStagingPassword=provider==='render'?/^\d{6}$/.test(env.CRC_STAGING_PASSWORD||'')||(env.CRC_STAGING_PASSWORD||'').length>=24:(env.CRC_STAGING_PASSWORD||'').length>=24;
+ if(!env.CRC_STAGING_USER||env.CRC_STAGING_USER.includes(':')||!validStagingPassword)throw Error(provider==='render'?'Set a six-digit private preview PIN':'Set private staging credentials; password minimum 24 characters');
  const fixturePasswords={};
  if(provider==='render'){
   for(const [user,key] of [['customer','CRC_CUSTOMER_PASSWORD'],['contractor','CRC_CONTRACTOR_PASSWORD'],['owner','CRC_OWNER_PASSWORD']]){

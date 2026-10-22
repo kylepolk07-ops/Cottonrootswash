@@ -34,20 +34,20 @@ const errors=[];
 const page=await context.newPage();page.setDefaultTimeout(5000);page.on('pageerror',e=>errors.push(e.message));
 try{
  await page.goto(localOrigin+'/contractor');
- await page.getByRole('heading',{name:'Enter your test access code'}).waitFor();
+ await page.getByRole('heading',{name:'Enter your test PIN'}).waitFor();
  assert.ok(page.url().includes('/access'));
- assert.equal(await page.getByLabel('Private access code',{exact:true}).count(),1);
- await page.getByLabel('Private access code',{exact:true}).fill('wrong-code');await page.getByRole('button',{name:'Open private test',exact:true}).click();
+ assert.equal(await page.getByLabel('6-digit test PIN',{exact:true}).count(),1);
+ await page.getByLabel('6-digit test PIN',{exact:true}).fill('wrong-code');await page.getByRole('button',{name:'Open private test',exact:true}).click();
  await page.waitForLoadState('networkidle');
  const alertText=await page.getByRole('alert').textContent();assert.ok(alertText.includes('That code did not match.'),alertText);
 
- await page.getByLabel('Private access code',{exact:true}).fill(password);await page.getByRole('button',{name:'Open private test',exact:true}).click();
+ await page.getByLabel('6-digit test PIN',{exact:true}).fill(password);await page.getByRole('button',{name:'Open private test',exact:true}).click();
  await page.getByRole('heading',{name:'Welcome back',exact:true}).waitFor();assert.equal(new URL(page.url()).pathname,'/contractor');
  const cookies=await context.cookies(localOrigin);const access=cookies.find(c=>c.name==='__Host-crc_access');assert.ok(access?.secure&&access.httpOnly);assert.equal(access.sameSite,'Strict');
  const customer=fixtures.accounts.find(u=>u.username==='customer');
  await page.goto(localOrigin+'/customer');await page.getByLabel('Username',{exact:true}).fill(customer.username);await page.getByLabel('Password',{exact:true}).fill(customer.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();
- await page.getByRole('heading',{name:'Your laundry, step by step',exact:true}).waitFor();
- await page.reload();await page.getByRole('heading',{name:'Your laundry, step by step',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'A little less laundry.',exact:true}).waitFor();
+ await page.reload();await page.getByRole('heading',{name:'A little less laundry.',exact:true}).waitFor();
  assert.equal(await page.evaluate(async()=>(await fetch('/api/management')).status),403);
  assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  mkdirSync(resolve('test-results'),{recursive:true});

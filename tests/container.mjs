@@ -23,8 +23,8 @@ async function request(path,body,extra={}){
  return new Promise((resolve,reject)=>{
   const req=http.request(base+path,{method:body===undefined?'GET':'POST',headers:{...headers,...(body===undefined?{}:{'content-type':'application/json',origin,'x-csrf-token':csrf||'','idempotency-key':randomUUID(),cookie:cookie||''}),...extra}},res=>{
    const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>{
-    let data;try{data=JSON.parse(Buffer.concat(chunks).toString())}catch{data={}}
-    resolve({status:res.statusCode,headers:{get:key=>Array.isArray(res.headers[key])?res.headers[key][0]:res.headers[key]},data});
+    const raw=Buffer.concat(chunks);let data;try{data=JSON.parse(raw.toString())}catch{data={}}
+    resolve({status:res.statusCode,headers:{get:key=>Array.isArray(res.headers[key])?res.headers[key][0]:res.headers[key]},data,raw});
    });
   });req.on('error',reject);req.end(body===undefined?undefined:JSON.stringify(body));
  });
@@ -36,6 +36,8 @@ try{
  launch();
  const port=docker('port',name,'3000/tcp').split(':').pop();base='http://127.0.0.1:'+port;await ready();
  const status=docker('exec',name,'cat','/proc/1/status');assert.match(status,/Uid:\s+1000\s+1000\s+1000\s+1000/);assert.match(status,/Gid:\s+1000\s+1000\s+1000\s+1000/);assert.match(status,/Groups:\s*\n/);
+ const qrPage=await request('/trial-qr');assert.equal(qrPage.status,200);assert.match(qrPage.raw.toString(),/You will still need your private PIN/);
+ const qrImage=await request('/trial-qr.png');assert.equal(qrImage.status,200);assert.equal(qrImage.headers.get('content-type'),'image/png');assert.equal(qrImage.raw.subarray(1,4).toString(),'PNG');
  const fixtures=JSON.parse(docker('exec',name,'cat',render?'/tmp/cotton-roots-trial/fixtures.json':'/data/fixtures.json'));
  const user=fixtures.accounts.find(a=>a.username==='customer');
  if(render)assert.equal(user.password,customerPassword);
