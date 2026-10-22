@@ -87,3 +87,8 @@ Final evidence for this update: npm test29/29 passed, zero failed/skipped; npm r
 - Allowed the private Render access code to authenticate the synthetic Customer and Contractor fixtures after the outer private gate.
 - Kept owner/Management on its separate password and limited the convenience path to disposable staging.
 - Updated the login instructions and added regression coverage for both allowed trial roles and denied owner access.
+
+# 2026-10-21 — Shorter disposable access code
+
+- Reduced only the disposable Render private-access code minimum from 24 to 12 characters for easier testing on phones.
+- The same code remains limited to Customer and Contractor; owner/Management passwords retain the 24-character minimum.

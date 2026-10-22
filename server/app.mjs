@@ -16,7 +16,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  if(remoteOrigin){
   const url=new URL(remoteOrigin);
   if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
-  if(typeof stagingUser!=='string'||!stagingUser||stagingUser.includes(':')||typeof stagingPassword!=='string'||stagingPassword.length<24)throw Error('Private staging credentials required (password minimum 24 characters)');
+  const stagingMinimum=disposable?12:24;
+  if(typeof stagingUser!=='string'||!stagingUser||stagingUser.includes(':')||typeof stagingPassword!=='string'||stagingPassword.length<stagingMinimum)throw Error(`Private staging credentials required (password minimum ${stagingMinimum} characters)`);
  }
  for(const [username,password] of Object.entries(fixturePasswords)){
   if(!['customer','contractor','owner'].includes(username)||typeof password!=='string'||password.length<24||password.length>256)throw Error('Invalid synthetic fixture password configuration');
