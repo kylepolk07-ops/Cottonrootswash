@@ -114,7 +114,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      try{
       const paymentRecord=reconcileStripeCheckout(event,{orderId:order.id,customerId:order.customer_id,amountCents:order.stripe_checkout_total_cents,currency:'USD',checkoutSessionId:order.stripe_checkout_session_id,processedEventIds:new Set(state.paymentEvents)});
       const updated=transition(order,ACTION.PAYMENT,{verifiedServerWebhook:true,paymentEventId:event.id});
-      Object.assign(updated,{payment_provider:'stripe_test',stripe_payment_intent_id:paymentRecord.paymentIntentId,stripe_checkout_session_id:paymentRecord.sessionId});state.orders[index]=updated;state.paymentEvents.push(event.id);
+      Object.assign(updated,{payment_provider:'stripe_test',stripe_payment_intent_id:paymentRecord.paymentIntentId,stripe_checkout_session_id:paymentRecord.sessionId,sales_tax_cents:paymentRecord.taxCents,payment_subtotal_cents:paymentRecord.subtotalCents,payment_total_cents:paymentRecord.totalCents});state.orders[index]=updated;state.paymentEvents.push(event.id);
       state.audit.push({id:token().slice(0,24),actor:'stripe-test-webhook',at:new Date().toISOString(),path:remotePath,action:'payment_verified',order_id:order.id,prior_status:order.status,new_status:updated.status,request_id:event.id});save();return send(200,{received:true});
      }catch(error){state=JSON.parse(before);fail(409,error.message)}
     }

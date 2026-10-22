@@ -485,10 +485,11 @@ function summary(c, o) {
     dl.append(node("dt", k), node("dd", v));
   c.append(dl);
   if (o.total !== undefined) {
-    const amount = node("p", `Laundry total: $${Number(o.total).toFixed(2)}`, {
+    const amount = node("p", `${o.payment_verified?"Laundry subtotal":"Current laundry total"}: $${Number(o.total).toFixed(2)}`, {
       class: "price",
     });
     c.append(amount);
+    if(o.payment_verified&&Number.isSafeInteger(o.sales_tax_cents)&&Number.isSafeInteger(o.payment_total_cents))c.append(node("p",`Sales tax: $${(o.sales_tax_cents/100).toFixed(2)} · Paid total: $${(o.payment_total_cents/100).toFixed(2)}`,{class:"note"}));
   }
   if (o.detergent)
     c.append(
@@ -549,7 +550,7 @@ function addTestCheckout(card, o) {
   card.append(
     node(
       "p",
-      `TEST MODE ESTIMATE · Laundry $${(pricing.base / 100).toFixed(2)} + estimated online payment cost $${(pricing.fee / 100).toFixed(2)} = $${(pricing.testTotal / 100).toFixed(2)} test total. Final live pricing and fee rules are not approved.`,
+      `TEST MODE ESTIMATE · Laundry $${(pricing.base / 100).toFixed(2)} + estimated online payment cost $${(pricing.fee / 100).toFixed(2)} = $${(pricing.testTotal / 100).toFixed(2)} before tax. Stripe calculates applicable sales tax from the billing address at checkout.`,
       { class: "note" },
     ),
   );
@@ -586,27 +587,13 @@ async function orders() {
   main.append(filterBox);
   const updated=node("p",`Updated ${new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`,{class:"muted"});
   filterBox.append(updated);
-  const filter = select(
-    filterBox,
-    "Laundry status",
-    app === "customer"
-      ? [
-          ["active", "In progress"],
-          ["ready", "Paid & ready"],
-          ["complete", "Past laundry"],
-        ]
-      : page === "offers"
-        ? [["all", "All available offers"]]
-        : [
-            ["all", "All my jobs"],
-            ["active", "My active jobs"],
-            ["complete", "Returned jobs"],
-          ],
-  );
-  if(app==="customer")filter.value="active";
+  const historyMode=app!=="contractor"||page!=="offers";
+  const filter = select(filterBox,"Laundry status",page==="offers"?[["all","All available offers"]]:[["active",app==="customer"?"Active laundry":"Active jobs"],["complete",app==="customer"?"Older laundry":"Older jobs"]]);
+  if(historyMode)filter.value="active";
   const showing=node("p",undefined,{class:"note"});
   filterBox.append(showing);
   button(filterBox,"Refresh status",()=>route(page),true);
+  if(historyMode)button(filterBox,app==="customer"?"View older laundry":"View older jobs",()=>{filter.value=filter.value==="active"?"complete":"active";applyFilter();},true);
   if (app === "contractor") {
     const help = button(
       filterBox,

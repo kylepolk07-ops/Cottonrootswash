@@ -6,7 +6,7 @@ import {stripeTestConfig,estimateStripeTestCharge,verifyStripeSignature,createSt
 const origin='https://cotton-test.example',secretKey='sk_test_1234567890abcdef',webhookSecret='whsec_1234567890abcdef';
 const config={provider:'stripe',mode:'test',origin,secretKey,webhookSecret,feeBps:290,feeFixedCents:30};
 const env={CRC_PAYMENT_PROVIDER:'stripe_test',STRIPE_SECRET_KEY:secretKey,STRIPE_WEBHOOK_SECRET:webhookSecret,CRC_STRIPE_TEST_FEE_BPS:'290',CRC_STRIPE_TEST_FEE_FIXED_CENTS:'30'};
-const event=()=>({id:'evt_synthetic',type:'checkout.session.completed',data:{object:{object:'checkout.session',id:'cs_test_synthetic',mode:'payment',payment_status:'paid',status:'complete',client_reference_id:'order-1',metadata:{order_id:'order-1',customer_id:'customer'},amount_total:3125,currency:'usd',payment_intent:'pi_synthetic'}}});
+const event=()=>({id:'evt_synthetic',type:'checkout.session.completed',data:{object:{object:'checkout.session',id:'cs_test_synthetic',mode:'payment',payment_status:'paid',status:'complete',automatic_tax:{status:'complete'},client_reference_id:'order-1',metadata:{order_id:'order-1',customer_id:'customer'},amount_subtotal:3125,total_details:{amount_tax:258},amount_total:3383,currency:'usd',payment_intent:'pi_synthetic'}}});
 
 test('Stripe configuration is explicit test mode and rejects live or partial credentials',()=>{
  assert.equal(stripeTestConfig({},origin),null);
@@ -36,13 +36,14 @@ test('hosted Stripe test checkout sends trusted amount and accepts only Stripe t
  assert.equal(result.amountCents,3125);assert.equal(request.url,'https://api.stripe.com/v1/checkout/sessions');assert.equal(request.options.headers.Authorization,`Bearer ${secretKey}`);assert.equal(request.options.headers['Idempotency-Key'],'checkout-order-1');
  assert.equal(new URLSearchParams(request.options.body).get('customer_email'),'customer@example.com');
  const form=new URLSearchParams(request.options.body);assert.equal(form.get('mode'),'payment');assert.equal(form.get('line_items[0][price_data][unit_amount]'),'3125');assert.equal(form.get('metadata[customer_id]'),'customer');assert.ok(!request.options.body.toString().includes(secretKey));
+ assert.equal(form.get('automatic_tax[enabled]'),'true');assert.equal(form.get('billing_address_collection'),'required');assert.equal(form.get('line_items[0][price_data][tax_behavior]'),'exclusive');
  await assert.rejects(()=>createStripeTestCheckout({config,orderId:'order-1',customerId:'customer',amountCents:3125,idempotencyKey:'checkout-order-1',fetchImpl:async()=>({ok:true,json:async()=>({id:'cs_live_bad',url:'https://attacker.example'})})}));
 });
 
 test('Stripe reconciliation rejects mismatched, unpaid, live-like and duplicate checkout events',()=>{
  const trusted={orderId:'order-1',customerId:'customer',amountCents:3125,currency:'USD',checkoutSessionId:'cs_test_synthetic',processedEventIds:new Set()};
- assert.equal(reconcileStripeCheckout(event(),trusted).paymentIntentId,'pi_synthetic');
- const mutations=[e=>e.type='payment_intent.succeeded',e=>e.data.object.payment_status='unpaid',e=>e.data.object.status='open',e=>e.data.object.amount_total=1,e=>e.data.object.currency='cad',e=>e.data.object.client_reference_id='other',e=>e.data.object.metadata.customer_id='other',e=>e.data.object.id='cs_live_bad'];
+ const record=reconcileStripeCheckout(event(),trusted);assert.equal(record.paymentIntentId,'pi_synthetic');assert.equal(record.taxCents,258);assert.equal(record.totalCents,3383);
+ const mutations=[e=>e.type='payment_intent.succeeded',e=>e.data.object.payment_status='unpaid',e=>e.data.object.status='open',e=>e.data.object.automatic_tax.status='failed',e=>e.data.object.amount_subtotal=1,e=>e.data.object.amount_total=1,e=>e.data.object.currency='cad',e=>e.data.object.client_reference_id='other',e=>e.data.object.metadata.customer_id='other',e=>e.data.object.id='cs_live_bad'];
  for(const mutate of mutations){const changed=event();mutate(changed);assert.throws(()=>reconcileStripeCheckout(changed,trusted))}
  assert.throws(()=>reconcileStripeCheckout(event(),{...trusted,processedEventIds:new Set(['evt_synthetic'])}),/Duplicate/);
 });
