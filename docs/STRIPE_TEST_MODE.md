@@ -14,7 +14,7 @@ The owner selected Stripe because the Cotton Roots account must be under credent
 Environment variable names, never values:
 
 - `CRC_PAYMENT_PROVIDER=stripe_test`
-- `STRIPE_SECRET_KEY` (`sk_test_...` only)
+- `STRIPE_SECRET_KEY` (`rk_test_...` with only Checkout Sessions write permission is preferred; `sk_test_...` is also accepted)
 - `STRIPE_WEBHOOK_SECRET` (`whsec_...` for the exact staging endpoint)
 - `CRC_STRIPE_TEST_FEE_BPS` (test display estimate, for example `290`)
 - `CRC_STRIPE_TEST_FEE_FIXED_CENTS` (test display estimate, for example `30`)
