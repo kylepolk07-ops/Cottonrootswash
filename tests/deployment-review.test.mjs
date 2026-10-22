@@ -28,10 +28,10 @@ test('independent remote review: health reveals no app data; all app routes requ
  const {request,fixtures}=await harness(t);
  const health=await request('/healthz',{headers:{host:'localhost'}});assert.equal(health.status,200);assert.deepEqual(JSON.parse(health.text),{ok:true});
  for(const path of ['/customer','/contractor','/web/app.mjs','/api/orders','/api/management','/.runtime/fixtures.json']){
-  const r=await request(path);assert.equal(r.status,401,path);assert.match(r.headers['www-authenticate'],/^Basic/);
+  const r=await request(path);assert.equal(r.status,path.startsWith('/api/')?401:303,path);assert.equal(r.headers['www-authenticate'],undefined);if(r.status===303)assert.equal(new URL(r.headers.location,'https://test.invalid').pathname,'/access');
   for(const sensitive of [stagingPassword,fixtures.bagToken,...fixtures.accounts.map(a=>a.password)])assert.ok(!r.text.includes(sensitive));
  }
- assert.equal((await request('/customer',{headers:{authorization:'Basic '+Buffer.from('test-gate:wrong-password').toString('base64')}})).status,401);
+ assert.equal((await request('/customer',{headers:{authorization:'Basic '+Buffer.from('test-gate:wrong-password').toString('base64')}})).status,303);
  assert.equal((await request('/customer',{headers:{authorization}})).status,200);
  assert.equal((await request('/api/orders',{headers:{authorization}})).status,401);
 });

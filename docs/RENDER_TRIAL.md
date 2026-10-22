@@ -14,7 +14,7 @@ An authorized hosting account is still necessary for live, shared Customer/Contr
 2. Use **New → Blueprint** (wording may vary). Select that repository and source branch `staging/phone-trial`, containing `render.yaml`. Review requested resources before applying. It requests one free Docker web service and no paid disk, database or additional services.
 3. Verify service plan is free and one instance; keep the generated environment values secret. If Render cannot accept the configuration or offers a paid alternative, stop and record the error rather than buying resources. No live phone test is claimed until deployment actually succeeds.
 4. The Blueprint generates private values for `CRC_STAGING_PASSWORD`, `CRC_CUSTOMER_PASSWORD`, `CRC_CONTRACTOR_PASSWORD`, `CRC_OWNER_PASSWORD`. View them only in the authorized Render Environment settings and store privately in a password manager; never paste them into chat/logs/source. No shell access is required to retrieve fixture passwords.
-5. The browser's outer staging prompt uses username `trial` and `CRC_STAGING_PASSWORD`. App logins use `customer`, `contractor` or `owner` with their respective generated passwords. Owner Management is on `/contractor`. The same HTTPS origin hosts `/customer` and `/contractor`.
+5. Open `/access` and enter the value of `CRC_STAGING_PASSWORD` into the Private access code field; no outer-gate username is required. A Secure/HttpOnly cookie remembers private access for eight hours or until restart. App logins use `customer`, `contractor` or `owner` with their respective generated passwords. Owner Management is on `/contractor`. The same HTTPS origin hosts `/customer` and `/contractor`.
 6. Owner Management shows **Synthetic test codes** for the sample bag and station. Copy those codes privately for the test customer/contractor manual scan fields. Other roles cannot retrieve this kit. All bags, accounts and orders are fake.
 
 ## Disposable data and runtime safeguards
@@ -27,7 +27,7 @@ Fixture passwords initialize only on the first database bootstrap and have lengt
 
 ## Acceptance checks before owner trial
 
-- HTTPS loads both apps only after the private password challenge; a session alone cannot bypass the outer gate.
+- HTTPS loads both apps only after the private access form; a session alone cannot bypass the outer gate.
 - Customer/contractor see only authorized records; customer and contractor cannot access Management or sample code API.
 - Owner can retrieve synthetic codes without shell access; no endpoint returns generated account passwords.
 - Complete claim/book/dropoff → availability/accept/weigh/checkout → washing/return/checkin across two test accounts; earnings and payment remain pending.

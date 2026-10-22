@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {shopDateKey} from '../shared/calendar.mjs';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm,stat} from 'node:fs/promises';
@@ -81,7 +82,7 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  denied(await action(c,o.id,'drop_off',scan));
  const conflict=await action(c,o.id,'drop_off',{...scan,bagToken:'different'},key);assert.equal(conflict.status,409);
  denied(await action(c,o.id,'customer_pickup',scan));
- for(const actor of [k,k2])assert.equal((await actor.request('/api/availability',{method:'POST',body:{days:[new Date().toISOString().slice(0,10)],preference:'both'}})).status,200);
+ for(const actor of [k,k2])assert.equal((await actor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
  denied(await action(k,o.id,'accept_job',{deadlineAcknowledged:false}));
  const accepts=await Promise.all([k,k2].map(actor=>action(actor,o.id,'accept_job',{deadlineAcknowledged:true})));
  assert.equal(accepts.filter(r=>r.status===200).length,1,JSON.stringify(accepts));

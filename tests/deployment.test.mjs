@@ -31,7 +31,7 @@ test('private remote staging gates all app assets, enforces transport/origin and
   });
  }
  for(const path of ['/customer','/contractor','/web/app.mjs','/api/orders']){
-  const r=await request(path);assert.equal(r.status,401);assert.match(r.headers['www-authenticate'],/private staging/);
+  const r=await request(path);assert.equal(r.status,path.startsWith('/api/')?401:303);assert.equal(r.headers['www-authenticate'],undefined);if(r.status===303)assert.equal(new URL(r.headers.location,'https://test.invalid').pathname,'/access');
  }
  assert.equal((await request('/healthz')).status,200);
  assert.equal((await request('/healthz',{headers:{Host:'healthcheck.railway.app'}})).status,200);
@@ -40,7 +40,7 @@ test('private remote staging gates all app assets, enforces transport/origin and
  assert.equal((await request('/customer',{headers:{Host:'attacker.invalid',authorization:basic}})).status,403);
  assert.equal((await request('/customer',{headers:{Host:'localhost',authorization:basic}})).status,403);
  for(const proto of ['http','https,http',''])assert.equal((await request('/customer',{headers:{authorization:basic,'x-forwarded-proto':proto}})).status,403);
- assert.equal((await request('/customer',{headers:{authorization:'Basic '+Buffer.from('staging:wrong').toString('base64')}})).status,401);
+ assert.equal((await request('/customer',{headers:{authorization:'Basic '+Buffer.from('staging:wrong').toString('base64')}})).status,303);
  const page=await request('/customer',{headers:{authorization:basic}});assert.equal(page.status,200);assert.match(page.headers['strict-transport-security'],/max-age/);
  const fixtures=JSON.parse(await readFile(join(dataDir,'fixtures.json'),'utf8'));
  const user=fixtures.accounts.find(a=>a.username==='customer');

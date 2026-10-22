@@ -8,7 +8,7 @@ Sign up at https://railway.com using the GitHub account that can access `kylepol
 
 ## Deployment configuration for the authorized operator
 
-Use the `staging/railway-private` source branch after it is pushed and verified. Do not enable unprotected public app access or production auto-deployment. Select the repository service using the committed Dockerfile/railway.toml. Startup fails closed until the variables and volume are supplied. A private staging endpoint accessible on a phone needs a generated HTTPS Railway domain, with both interfaces on that origin; the outer password gate protects all frontend pages, assets and API calls. Only a minimal health probe is ungated. This is password-protected synthetic staging, not public launch approval.
+Use the `staging/railway-private` source branch after it is pushed and verified. Do not enable unprotected public app access or production auto-deployment. Select the repository service using the committed Dockerfile/railway.toml. Startup fails closed until the variables and volume are supplied. A private staging endpoint accessible on a phone needs a generated HTTPS Railway domain, with both interfaces on that origin; the outer private-code form and secure cookie protects all frontend pages, assets and API calls. Only a minimal health probe is ungated. This is password-protected synthetic staging, not public launch approval.
 
 Attach one persistent volume at `/data`, run exactly one replica, and set:
 
@@ -26,11 +26,11 @@ Do not add financial, SMS or identity-provider secrets; those integrations are d
 
 ## Private test access and readiness
 
-First authenticate the staging gate through the browser's native password prompt. Then sign in separately to the Customer or Contractor app. Synthetic account credentials and QR tokens are generated on first startup at `/data/fixtures.json`, mode 0600. Retrieve only through authorized Railway console/SSH, privately, and put them in the owner's password manager. Do not dump them into deployment logs, chat, public artifacts or Git. Management uses the synthetic `owner` account on the Contractor app; outer staging access alone never grants Management access.
+First open `/access` and enter the configured private staging code in the normal web form. The native browser password prompt is no longer used for ordinary visits. Then sign in separately to the Customer or Contractor app. Synthetic account credentials and QR tokens are generated on first startup at `/data/fixtures.json`, mode 0600. Retrieve only through authorized Railway console/SSH, privately, and put them in the owner's password manager. Do not dump them into deployment logs, chat, public artifacts or Git. Management uses the synthetic `owner` account on the Contractor app; outer staging access alone never grants Management access.
 
 After the actual host is connected, verify:
 
-1. Health succeeds without data; both apps/assets return a private-password challenge without the staging gate. Wrong Host/HTTP-forwarded-protocol fails.
+1. Health succeeds without data; both apps/assets redirect to the neutral `/access` form without the staging gate; APIs return 401 and no native password challenge. Wrong Host/HTTP-forwarded-protocol fails.
 2. Correct gate loads `/customer` and `/contractor` over actual HTTPS. App session cookies are Secure, HttpOnly and SameSite=Strict. Cross-origin login fails. No direct public container port exists.
 3. Separate synthetic customer/contractor/owner accounts reproduce README workflow on a real phone, including rejected wrong bag and rejected customer Management access.
 4. Persist a synthetic order, restart/redeploy the service, sign in again and confirm account/order persistence. Sessions deliberately expire on restart. Confirm only one running replica with the attached volume.

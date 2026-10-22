@@ -6,7 +6,7 @@ Private single-process synthetic staging: separate Customer and Contractor mobil
 
 ## Verified
 
-- 20 automated tests passed, no failed/skipped tests in the final run: business rules, custody, authorization, spoofed payment rejection, signed payment helper, idempotency, competing acceptance, restart persistence, request limits, Host/Origin, login throttling, runtime permissions, and audit redaction.
+- 29 automated tests passed, no failed/skipped tests in the final run: business rules, custody, authorization, spoofed payment rejection, signed payment helper, idempotency, competing acceptance, restart persistence, request limits, Host/Origin, login throttling, runtime permissions, and audit redaction.
 - Headless Chromium phone-size full workflow passed repeatedly, including final lead rerun; no browser exceptions. Screenshots in ignored test-results/. Real device/camera behavior is untested.
 - Frozen install, server syntax and dependency audit passed. Runtime app has zero third-party dependencies; audit reported zero vulnerabilities. This is not a penetration test or blanket security assurance.
 - CI definition is included; its remote run result has not been verified. Source is pushed on `staging/railway-private`. Managed Postgres migration has not been applied.
@@ -38,3 +38,7 @@ Owner chose Railway preparation and reports no account yet. No paid resources cr
 ## Outage fallback update
 
 User confirmed Railway platform outage and requested alternate phone testing. `staging/phone-trial` includes Render disposable-trial configuration and phone-ready generated credential setup. No account or service created. Actual Render pricing/eligibility, Blueprint application, HTTPS edge, health checks and physical phone tests remain unverified. See RENDER_TRIAL.md for secure account setup and explicit data-reset limits. A nine-page noninteractive walkthrough PDF of actual screens is generated as a task artifact; source generation and security redaction are recorded in PHONE_WALKTHROUGH_REPORT.md.
+
+## Live Render observation and sign-in repair
+
+Owner screenshot reports Render service `cotton-roots-private-trial` Live on Free, source `dd0a980`, at `https://cotton-roots-private-trial.onrender.com`. This is provider status evidence, not a completed authenticated phone workflow. The workspace's outbound proxy denies this hostname (CONNECT403); it is not an observed app403. Owner could reach the Basic prompt but could not authenticate; actual credential mismatch or browser cause remains unconfirmed. Replaced ordinary native-prompt access with a tested neutral `/access` page, explicit errors, signed form challenge and Secure/HttpOnly gate cookie. Separate app roles and secret remain required. See ACCESS_REVIEW.md and WORK_LOG.md. Wait for the new commit to be Live before using `/access`. Real owner/iPhone sign-in remains the next required check.

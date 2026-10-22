@@ -4,6 +4,8 @@ import {randomBytes,scryptSync,timingSafeEqual,createHash} from 'node:crypto';
 import {mkdirSync,existsSync,writeFileSync,readFileSync,chmodSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {shopDateKey} from '../shared/calendar.mjs';
+import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal} from '../shared/rules.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -19,7 +21,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  for(const [username,password] of Object.entries(fixturePasswords)){
   if(!['customer','contractor','owner'].includes(username)||typeof password!=='string'||password.length<24||password.length>256)throw Error('Invalid synthetic fixture password configuration');
  }
- const gate=remoteOrigin?hash(stagingUser+':'+stagingPassword):null;
+ const privateAccess=remoteOrigin?createPrivateAccess({origin:remoteOrigin,username:stagingUser,password:stagingPassword}):null;
  const cookieSecurity=remoteOrigin?'; Secure':'';
  mkdirSync(dataDir,{recursive:true,mode:0o700});
  chmodSync(dataDir,0o700);
@@ -57,16 +59,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(requestHost!==remoteHost)fail(403,'Remote host required');
     if(req.headers['x-forwarded-proto']!=='https')fail(403,'HTTPS required');
     headers['Strict-Transport-Security']='max-age=31536000';
-    const auth=req.headers.authorization;
-    const supplied=typeof auth==='string'&&auth.startsWith('Basic ')?Buffer.from(auth.slice(6),'base64').toString('utf8'):'';
-    if(!timingSafeEqual(Buffer.from(hash(supplied),'hex'),Buffer.from(gate,'hex'))){headers['WWW-Authenticate']='Basic realm="Cotton Roots private staging", charset="UTF-8"';fail(401,'Private staging access required')}
+    if(await privateAccess(req,res,headers))return;
    }else if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
    const url=new URL(req.url,'http://localhost'),path=url.pathname;
    if(!path.startsWith('/api/')){
     if(req.method!=='GET')fail(405,'Method not allowed');
-    const files={'/':'apps/customer/index.html','/customer':'apps/customer/index.html','/customer/':'apps/customer/index.html','/contractor':'apps/contractor/index.html','/contractor/':'apps/contractor/index.html'};
+    const files={'/':'apps/customer/index.html','/customer':'apps/customer/index.html','/customer/':'apps/customer/index.html','/contractor':'apps/contractor/index.html','/contractor/':'apps/contractor/index.html','/web/calendar.mjs':'shared/calendar.mjs'};
     let file=files[path];
-    if(/^\/web\/[a-zA-Z0-9_.-]+$/.test(path))file=path.slice(1);
+    if(!file&&/^\/web\/[a-zA-Z0-9_.-]+$/.test(path))file=path.slice(1);
     if(!file||!existsSync(resolve(root,file)))fail(404,'Not found');
     headers['Content-Type']=file.endsWith('.css')?'text/css':file.endsWith('.js')||file.endsWith('.mjs')?'text/javascript':'text/html';
     res.writeHead(200,headers);res.end(readFileSync(resolve(root,file)));return;
@@ -146,7 +146,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      else if(contractorActions.includes(action)){if(user.role!=='contractor'||!user.approved)fail(403,'Approved contractor required');if(action!==ACTION.ACCEPT&&o.assigned_contractor_id!==user.id)fail(403,'Assigned contractor required')}
      else if(action===ACTION.RELEASE){if(!staff(user))fail(403,'Staff required')}
      else fail(403,'Action unavailable; payments are not connected');
-     if(action===ACTION.ACCEPT){const today=new Date().toISOString().slice(0,10);if(!user.days.includes(today)||!['both',o.service].includes(user.preference))fail(409,'Set matching availability for today first')}
+     if(action===ACTION.ACCEPT){const today=shopDateKey();if(!user.days.includes(today)||!['both',o.service].includes(user.preference))fail(409,'Set matching availability for today first')}
      if(action==='rate'){
       if(o.status!=='picked_up'||o.rating)fail(409,'Rating unavailable');if(!Number.isInteger(body.rating)||body.rating<1||body.rating>5)fail(400,'Rating must be 1–5');o.rating=body.rating;result={order:publicOrder(o)};
      }else{
