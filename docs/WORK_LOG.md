@@ -23,6 +23,10 @@ Lead `/root` removed the visible QR-token typing fields from bag and shop-statio
 
 Lead `/root` separated contractor approval from account editing. The contractor table now shows Name, Phone, Approval, Bag, and Account explicitly. **Review for approval** opens a read-only review screen, so Management does not have to edit the contractor's name or phone. Approval still requires the owner to confirm the phone conversation and in-person shop meeting. Password resets, contact corrections, pause, and deletion remain under the separately labeled **Account options** control.
 
+## 2026-10-22 — full Management order visibility
+
+Lead `/root` expanded **Management → Orders** so a booking appears immediately under Awaiting customer drop-off, then moves through At shop/waiting for contractor, In progress, Ready for pickup, and Completed. Contractor custody remains protected: a newly booked order is not offered to contractors until the customer verifies physical shop arrival by scanning the assigned bag and shop station QR.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

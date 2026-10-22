@@ -1303,20 +1303,25 @@ function managementWorkspace(data) {
     });
 }
 function managementOrders(data) {
-  const c=card("📦","Orders","Ready bags are shown first. Completed orders stay available for your records.");managementBack(c);
+  const c=card("📦","Orders","Every order appears here from booking through pickup.");managementBack(c);
+  const awaiting=(data.orders||[]).filter(o=>o.status==="awaiting_dropoff");
+  const waiting=(data.orders||[]).filter(o=>["at_shop","offered"].includes(o.status));
+  const active=(data.orders||[]).filter(o=>["accepted","washing","payment_pending","paid_hold"].includes(o.status));
   const ready=(data.orders||[]).filter(o=>o.status==="paid_ready"&&o.payment_verified&&o.ready_for_pickup);
   const completed=(data.orders||[]).filter(o=>o.status==="picked_up").sort((a,b)=>Date.parse(b.picked_up_at||0)-Date.parse(a.picked_up_at||0));
-  c.append(node("h3",`Ready for pickup (${ready.length})`));
-  if(!ready.length)c.append(node("p","No orders are waiting for pickup.",{class:"muted"}));
-  for(const o of ready)managementOrderRow(c,o,data);
-  c.append(node("h3",`Completed (${completed.length})`));
-  if(!completed.length)c.append(node("p","No completed orders yet.",{class:"muted"}));
-  for(const o of completed)managementOrderRow(c,o,data);
+  for(const [title,empty,list] of [
+    ["Awaiting customer drop-off","No newly booked orders are waiting for drop-off.",awaiting],
+    ["At shop · waiting for contractor","No dropped-off orders are waiting for a contractor.",waiting],
+    ["In progress","No orders are currently being washed or processed.",active],
+    ["Ready for pickup","No orders are waiting for pickup.",ready],
+    ["Completed","No completed orders yet.",completed],
+  ]){c.append(node("h3",`${title} (${list.length})`));if(!list.length)c.append(node("p",empty,{class:"muted"}));for(const o of list)managementOrderRow(c,o,data)}
 }
 function managementOrderRow(parent,o,data) {
   const customer=(data.users||[]).find(u=>u.id===o.customer_id),contractor=(data.users||[]).find(u=>u.id===o.assigned_contractor_id);
   const row=node("div",undefined,{class:"step"});
-  row.append(node("div",o.status==="picked_up"?"✓":"🧺",{class:"big"}),node("p",`${o.bag_id||"No bag"} · Customer: ${customer?.displayName||customer?.username||o.customer_id||"Unknown"}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\n${o.status==="picked_up"?`Completed ${new Date(o.picked_up_at).toLocaleString()}`:"Paid and ready for pickup"}`));parent.append(row);
+  const detail=o.status==="picked_up"?`Completed ${new Date(o.picked_up_at).toLocaleString()}`:o.status==="awaiting_dropoff"?"Booked · customer has not checked it in at the shop":["at_shop","offered"].includes(o.status)?"Checked in · available to approved contractors":statusLabels[o.status]||o.status;
+  row.append(node("div",o.status==="picked_up"?"✓":"🧺",{class:"big"}),node("p",`${o.bag_id||"No bag"} · Customer: ${customer?.displayName||customer?.username||o.customer_id||"Unknown"}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\n${detail}`));parent.append(row);
 }
 function alertText(alert){
  const minutes=alert.state==="overdue"?alert.minutesLate:alert.minutesUntil,hours=Math.floor(minutes/60),remainder=minutes%60,amount=[hours?`${hours}h`:"",remainder?`${remainder}m`:""].filter(Boolean).join(" ")||"now";
