@@ -31,6 +31,12 @@ Lead `/root` expanded **Management → Orders** so a booking appears immediately
 
 Lead `/root` moved authenticated session records from process memory into the protected SQLite database on the persistent Render disk. Only a hash of the random session cookie is stored, with its separate CSRF token, account ID, and eight-hour expiry. Sessions now survive safe service restarts and deployments; sign-out, password reset, account pause, expiration, and capacity cleanup still revoke them. Added a restart regression proving the same secure cookie restores the account after restart and becomes invalid immediately after sign-out.
 
+## 2026-10-22 — protected pricing controls and rate snapshots
+
+Lead `/root` added **Management → Pricing** for the shop drop-off customer rate, future pickup/return rate, rush addition, extra/replacement bag price, and contractor pay per approved pound. Only the owner can change these values; inputs are constrained to $0–$100 with at most two decimals and changes are audited. Each new order stores the customer, rush, and contractor rates active when it was booked, preventing later price changes from retroactively changing existing customer charges or contractor pay. Customer booking, Contractor pay, Management money, dashboard calls to action, and server totals now use the protected configuration. This remains staging: real payments and payouts are not activated.
+
+Pricing changes now require a separate six-digit owner pricing PIN. The PIN is salted and hashed; its raw value is never returned through Management or notices. Each published change receives a server timestamp, remains in Pricing history, and creates an in-app notice for customers and contractors showing the new relevant rates and effective date. Existing booked orders retain their rate snapshots. The initial PIN is created from an already authenticated Owner session; this is a confirmation control for the private pilot, not production MFA.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

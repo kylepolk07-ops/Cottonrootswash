@@ -8,6 +8,7 @@ let user,
   page = "home",
   stopCamera,
   paymentPreview,
+  pricingPreview,
   agreementVersion,
   managementView = "home";
 window.addEventListener("pagehide", () => stopCamera?.());
@@ -258,6 +259,7 @@ function login() {
       page = "home";
       const me = await api("/api/me");
       paymentPreview = me.staging?.payment || null;
+      pricingPreview = me.pricing;
       agreementVersion = me.agreement?.version || null;
       user = me.user;
       if (me.staging?.disposable)
@@ -861,6 +863,7 @@ async function actionWizard(o, action) {
   button(c, "Back to laundry", () => route("orders"), true);
 }
 async function book() {
+  const prices=pricingPreview||{dropoff:2.5,full_service:3,rushPerLb:1};
   const c = card(
     "🧺",
     "Let’s book your laundry",
@@ -874,7 +877,7 @@ async function book() {
     choices,
     "🧺",
     "Drop off",
-    "$2.50 / lb · bring it to the shop",
+    `$${Number(prices.dropoff).toFixed(2)} / lb · bring it to the shop`,
     () => {},
   );
   drop.setAttribute("aria-pressed", "true");
@@ -882,7 +885,7 @@ async function book() {
     choices,
     "🚗",
     "Pickup & return",
-    "$3.00 / lb · coming later",
+    `$${Number(prices.full_service).toFixed(2)} / lb · coming later`,
     () => {},
   );
   full.disabled = true;
@@ -912,13 +915,13 @@ async function book() {
       const review = card(
         "🌿",
         "Ready to book?",
-        `Drop off · $2.50 / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? "Rush requested; not yet approved." : "Standard service."}`,
+        `Drop off · $${Number(prices.dropoff).toFixed(2)} / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? "Rush requested; not yet approved." : "Standard service."}`,
       );
       review.prepend(node("p", "STEP 3 OF 3 · REVIEW", { class: "eyebrow" }));
       review.append(
         node(
           "p",
-          "We round the measured weight up to the next ½ lb. Approved rush would add $1.00/lb. No payment is taken here.",
+          `We round the measured weight up to the next ½ lb. Approved rush would add $${Number(prices.rushPerLb).toFixed(2)}/lb. No payment is taken here.`,
           { class: "note" },
         ),
       );
@@ -1127,7 +1130,7 @@ async function earnings() {
   card(
     "🌱",
     "Your earnings",
-    "Contractor rate: $1.00 per approved pound. Machine costs are paid by the contractor. Payout integration is disabled; no funds move here.",
+    `Contractor rate: $${Number(pricingPreview?.contractor??1).toFixed(2)} per approved pound for newly booked jobs. Each accepted job keeps its booked rate. Machine costs are paid by the contractor. Payout integration is disabled; no funds move here.`,
   );
   const totals = node("div", undefined, { class: "stat-grid" });
   main.append(totals);
@@ -1272,6 +1275,7 @@ function managementWorkspace(data) {
   if (managementView === "orders") return managementOrders(data);
   if (managementView === "alerts") return managementAlerts(data);
   if (managementView === "complaints") return managementComplaints(data);
+  if (managementView === "pricing") return managementPricing(data);
   const c = card(
     "⚙️",
     "Management",
@@ -1295,12 +1299,21 @@ function managementWorkspace(data) {
     ["orders", "📦", "Orders", "Ready for pickup and completed orders"],
     ["alerts", "⏰", "Late alerts", "Due within 6 hours and overdue work"],
     ["complaints", "💬", "Customer complaints", "Review and resolve customer reports"],
+    ["pricing", "🏷", "Pricing", "Customer rates, bag price, and contractor pay"],
     ["tools", "🧪", "Pilot tools", "Synthetic QR and station test codes"],
   ])
     choice(choices, icon, title, description, () => {
       managementView = key;
       route("management");
     });
+}
+function managementPricing(data){
+  const prices=data.pricing||{dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
+  if(!data.pricingPinSet){c.append(node("p","Create a separate six-digit PIN. You will enter it every time pricing changes.",{class:"note"}));const pin=field(c,"New six-digit pricing PIN","password"),confirmPin=field(c,"Enter the PIN again","password");for(const input of [pin,confirmPin]){input.inputMode="numeric";input.maxLength=6;input.pattern="[0-9]{6}"}button(c,"Set pricing PIN",async()=>{await api("/api/management/pricing",{action:"set_pin",pin:pin.value,confirmPin:confirmPin.value});await route("management");message("Pricing PIN created. Open Pricing again to make changes.")});return}
+  const inputs={};for(const [key,label] of [["dropoff","Customer drop-off price per lb"],["full_service","Customer pickup & return price per lb"],["rushPerLb","Rush addition per lb"],["extraBag","Extra or replacement bag price"],["contractor","Contractor pay per approved lb"]]){inputs[key]=field(c,label,"number",Number(prices[key]).toFixed(2));inputs[key].min="0";inputs[key].max="100";inputs[key].step="0.01"}
+  const pin=field(c,"Confirm with six-digit pricing PIN","password");pin.inputMode="numeric";pin.maxLength=6;pin.pattern="[0-9]{6}";
+  button(c,"Confirm and publish pricing",async()=>{const body={pin:pin.value};for(const [key,input] of Object.entries(inputs))body[key]=Number(input.value);const result=await api("/api/management/pricing",body);pricingPreview=result.pricing;managementView="home";await route("management");message(`Pricing published effective ${new Date(result.effectiveAt).toLocaleString()}.`) });
+  if((data.pricingHistory||[]).length){c.append(node("h3","Pricing history"));for(const item of data.pricingHistory)c.append(node("p",`${new Date(item.effective_at).toLocaleString()} · Drop-off $${Number(item.pricing.dropoff).toFixed(2)}/lb · Contractor $${Number(item.pricing.contractor).toFixed(2)}/lb`,{class:"note"}))}
 }
 function managementOrders(data) {
   const c=card("📦","Orders","Every order appears here from booking through pickup.");managementBack(c);
@@ -1353,7 +1366,7 @@ function moneyManagement(data) {
   for (const label of ["Job", "Contractor", "Customer payment", "Contractor amount", "Payout status"]) row.append(node("th", label));
   head.append(row); table.append(head); const body = node("tbody");
   for (const order of jobs) {
-    const tr = node("tr"), amount = Number(order.billed_pounds || 0);
+    const tr = node("tr"), amount = Number(order.billed_pounds || 0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1);
     for (const value of [order.id, order.assigned_contractor_id, order.payment_verified ? "Verified" : "Waiting", `$${amount.toFixed(2)}`, order.payment_verified && order.returned_at ? "Ready for approval" : "Not ready"]) tr.append(node("td", value));
     body.append(tr);
   }
@@ -1776,9 +1789,10 @@ function weightControl(parent, input) {
   parent.append(panel);
 }
 async function home() {
-  const [{ orders: all = [] }, { dashboard }] = await Promise.all([
+  const [{ orders: all = [] }, { dashboard }, {notices=[]}] = await Promise.all([
     api("/api/orders"),
     api("/api/dashboard"),
+    api("/api/notices"),
   ]);
   const customer = app === "customer";
   const intro = card(
@@ -1792,6 +1806,11 @@ async function home() {
   intro.append(
     node("p", `Signed in as ${user.username || user.id}`, { class: "pill" }),
   );
+  for(const notice of notices.filter(item=>item.type==="pricing").slice(0,1)){
+    const prices=notice.pricing||{};
+    const update=card("🏷",notice.title||"Pricing update",`Effective ${new Date(notice.effective_at).toLocaleDateString()}. Existing booked orders keep their original rates.`);
+    update.append(node("p",customer?`Drop-off $${Number(prices.dropoff).toFixed(2)}/lb · Rush +$${Number(prices.rushPerLb).toFixed(2)}/lb`:`Contractor pay $${Number(prices.contractor).toFixed(2)}/approved lb`,{class:"note"}));
+  }
   const counts = node("div", undefined, { class: "stat-grid" });
   intro.append(counts);
   stat(
@@ -1822,7 +1841,7 @@ async function home() {
     choice(actions, "🛍", "Get your bag", "First bag included", () =>
       route("bags"),
     );
-    choice(actions, "🧺", "Book laundry", "Drop off · $2.50 / lb", () =>
+    choice(actions, "🧺", "Book laundry", `Drop off · $${Number(pricingPreview?.dropoff??2.5).toFixed(2)} / lb`, () =>
       route("book"),
     );
     const how = card("✨", "Easy as one, two, three.");
@@ -1866,7 +1885,7 @@ async function home() {
     choice(actions, "📖", "Step-by-step guide", "Know what comes next", () =>
       route("guide"),
     );
-    choice(actions, "🌱", "My pay", "$1.00 / approved lb", () =>
+    choice(actions, "🌱", "My pay", `$${Number(pricingPreview?.contractor??1).toFixed(2)} / approved lb`, () =>
       route("earnings"),
     );
     const next = all.find(
@@ -1978,6 +1997,7 @@ function guide(index = 0) {
 try {
   const d = await api("/api/me");
   paymentPreview = d.staging?.payment || null;
+  pricingPreview = d.pricing;
   agreementVersion = d.agreement?.version || null;
   if (d.staging?.disposable)
     document.querySelector(".staging").textContent =

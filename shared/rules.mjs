@@ -18,10 +18,10 @@ export function canOfferToContractor(contractor, offer, dateKey) {
   return contractor?.approved===true && offer?.status==='open' && !!contractor.availability?.[dateKey] && (contractor.skills?.includes(offer.work_type)||contractor.skills?.includes('both'));
 }
 export function estimateContractorPay(approvedPounds){ return roundUpHalfPound(approvedPounds)*RATE.contractor; }
-export function invoiceTotal(service, roundedPounds, rushApproved=false) {
+export function invoiceTotal(service, roundedPounds, rushApproved=false, pricing=RATE) {
   if(!['dropoff','full_service'].includes(service)) throw Error('Invalid service');
   const lbs=roundUpHalfPound(roundedPounds);
-  return Number((lbs*(RATE[service]+(rushApproved?RATE.rushPerLb:0))).toFixed(2));
+  return Number((lbs*(Number(pricing[service])+(rushApproved?Number(pricing.rushPerLb):0))).toFixed(2));
 }
 export const CUSTODY_SEQUENCE=Object.freeze([
   'customer_bag_scan','customer_wall_dropoff','contractor_bag_out',

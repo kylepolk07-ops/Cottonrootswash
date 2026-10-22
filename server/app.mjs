@@ -17,6 +17,7 @@ const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const AGREEMENT_VERSION='pilot-2026-10-22-v1';
+const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1});
 const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','pilot_data'],contractor:['platform_role','independent_business','pilot_data']};
 export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
@@ -39,6 +40,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  let row=db.prepare('SELECT value FROM state WHERE id=1').get();
  let state=row?JSON.parse(row.value):{users:[],bags:[],orders:[],audit:[],keys:{},stationToken:token()};
  state.complaints??=[];
+ state.pricing??={...DEFAULT_PRICING};
+ state.pricingHistory??=[];state.notices??=[];state.pricingPin??=null;
  state.paymentEvents??=[];
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
  if(!row && fixtures){
@@ -148,7 +151,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const agreementRequired=['customer','contractor'].includes(user.role)&&user.agreement_version!==AGREEMENT_VERSION;
    if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
     if(path==='/api/dashboard'){
      if(user.role==='customer'){
       const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -160,7 +163,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       const offers=visibleOrders.filter(o=>['at_shop','offered'].includes(o.status)&&!o.assigned_contractor_id);
       const returned=state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at);
       const nextJob=jobs[0]?publicOrder(jobs[0]):null;if(nextJob){delete nextJob.customer_id;delete nextJob.detergent}
-      return send(200,{dashboard:{role:'contractor',approved:user.approved,availableDays:user.days.length,offers:offers.length,activeJobs:jobs.length,pendingPay:Number(returned.reduce((sum,o)=>sum+(o.billed_pounds||0),0).toFixed(2)),nextJob}});
+      return send(200,{dashboard:{role:'contractor',approved:user.approved,availableDays:user.days.length,offers:offers.length,activeJobs:jobs.length,pendingPay:Number(returned.reduce((sum,o)=>sum+(o.billed_pounds||0)*(o.contractor_rate_per_lb??DEFAULT_PRICING.contractor),0).toFixed(2)),nextJob}});
      }
      if(staff(user)){
       const now=Date.now(),open=state.orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -173,7 +176,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
-    if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>({order_id:o.id,pounds:o.billed_pounds,amount:o.billed_pounds,status:'pending',note:'No payments or payouts connected'}))});
+    if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>({order_id:o.id,pounds:o.billed_pounds,rate:o.contractor_rate_per_lb??DEFAULT_PRICING.contractor,amount:Number(((o.billed_pounds||0)*(o.contractor_rate_per_lb??DEFAULT_PRICING.contractor)).toFixed(2)),status:'pending',note:'No payments or payouts connected'}))});
     if(path==='/api/management/test-kit/bag-qr'){
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      const bagToken=state.bags[0]?.token;if(!bagToken)fail(404,'Synthetic bag unavailable');
@@ -211,7 +214,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='customer')fail(403,'Customer required');
      return send(200,{complaints:state.complaints.filter(item=>item.customer_id===user.id)});
     }
-    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,audit:state.audit})}
+    if(path==='/api/notices')return send(200,{notices:state.notices.slice(-10).reverse()});
+    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),audit:state.audit})}
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
@@ -277,7 +281,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(body.service==='full_service')fail(409,'Home collection routing is not yet available');
      const bag=state.bags.find(b=>b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(409,'Claim an active bag first');
      if(state.orders.some(o=>o.bag_id===bag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Bag already has an active order');
-     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,created_at:new Date().toISOString(),due_at:null,due_note:'Deadline is set from the verified shop drop-off time.'};
+     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,created_at:new Date().toISOString(),due_at:null,due_note:'Deadline is set from the verified shop drop-off time.'};
      state.orders.push(order);result={order};
     }else if(path==='/api/availability'){
      if(user.role!=='contractor')fail(403,'Contractor required');
@@ -312,6 +316,20 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='owner')fail(403,'Owner access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');
      if(body.phoneConfirmed!==true||body.inPersonConfirmed!==true)fail(400,'Confirm the phone conversation and in-person shop meeting first');
      const approvedAt=new Date().toISOString();applicant.approved=true;applicant.phone_screen_confirmed_at=approvedAt;applicant.shop_meeting_confirmed_at=approvedAt;applicant.approved_at=approvedAt;applicant.approved_by=user.id;result={user:publicUser(applicant)};
+    }else if(path==='/api/management/pricing'){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     const pin=typeof body.pin==='string'?body.pin:'';
+     if(body.action==='set_pin'){
+      if(state.pricingPin)fail(409,'Pricing PIN is already set');if(!/^\d{6}$/.test(pin)||pin!==body.confirmPin)fail(400,'Enter the same six-digit pricing PIN twice');
+      const salt=token();state.pricingPin={salt,hash:scryptSync(pin,salt,64).toString('hex'),created_at:new Date().toISOString(),created_by:user.id};result={pricingPinSet:true};
+     }else{
+     if(!state.pricingPin)fail(409,'Set the pricing PIN first');
+     const candidate=scryptSync(pin,state.pricingPin.salt,64);if(!/^\d{6}$/.test(pin)||!timingSafeEqual(candidate,Buffer.from(state.pricingPin.hash,'hex')))fail(403,'Pricing PIN did not match');
+     const next={};for(const key of Object.keys(DEFAULT_PRICING)){const value=Number(body[key]);if(!Number.isFinite(value)||value<0||value>100||Math.abs(value*100-Math.round(value*100))>1e-8)fail(400,'Prices must be between $0 and $100 with no more than two decimals');next[key]=value}
+     const effectiveAt=new Date().toISOString(),prior={...state.pricing};state.pricing=next;state.pricingHistory.push({id:token().slice(0,24),effective_at:effectiveAt,changed_by:user.id,prior,pricing:{...next}});
+     state.notices.push({id:token().slice(0,24),type:'pricing',effective_at:effectiveAt,created_at:effectiveAt,title:'Pricing update',pricing:{...next},message:'New pricing is now effective. Existing booked orders keep their original rates.'});
+     result={pricing:state.pricing,effectiveAt};
+     }
     }else if(/^\/api\/management\/complaints\/[^/]+$/.test(path)){
      if(!staff(user))fail(403,'Management access required');
      const complaint=state.complaints.find(item=>item.id===path.split('/').at(-1));if(!complaint)fail(404,'Complaint not found');
@@ -336,7 +354,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       if(action===ACTION.WASH_COMPLETE&&o.wash_completed_at||action===ACTION.RETURN_BAG&&o.return_bag_scanned_at)fail(409,'Scan already recorded');
       let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
       if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
-      if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved);
+      if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved,{dropoff:updated.customer_rate_per_lb??DEFAULT_PRICING.dropoff,full_service:updated.customer_rate_per_lb??DEFAULT_PRICING.full_service,rushPerLb:updated.rush_rate_per_lb??DEFAULT_PRICING.rushPerLb});
       state.orders[index]=updated;result={order:publicOrder(updated)};
      }
     }else fail(404,'Not found');

@@ -194,3 +194,18 @@ test('secure login session survives a safe server restart',async t=>{
  assert.equal((await customer.request('/api/logout',{method:'POST',body:{}})).status,200);
  assert.equal((await customer.request('/api/me')).status,401);
 });
+
+test('owner pricing changes are protected and new orders snapshot their rates',async t=>{
+ const h=await harness(t),customer=await h.client('customer'),owner=await h.client('owner');
+ const first={dropoff:3.25,full_service:4.5,rushPerLb:1.25,extraBag:12,contractor:1.5};
+ denied(await customer.request('/api/management/pricing',{method:'POST',body:first}));
+ assert.equal((await owner.request('/api/management/pricing',{method:'POST',body:{action:'set_pin',pin:'246810',confirmPin:'246810'}})).status,200);
+ denied(await owner.request('/api/management/pricing',{method:'POST',body:{...first,pin:'111111'}}));
+ const changed=await owner.request('/api/management/pricing',{method:'POST',body:{...first,pin:'246810'}});assert.equal(changed.status,200);assert.deepEqual(changed.data.pricing,first);assert.match(changed.data.effectiveAt,/Z$/);
+ denied(await owner.request('/api/management/pricing',{method:'POST',body:{...first,dropoff:3.257,pin:'246810'}}));
+ const order=await setupOrder(h,customer);assert.equal(order.customer_rate_per_lb,3.25);assert.equal(order.rush_rate_per_lb,1.25);assert.equal(order.contractor_rate_per_lb,1.5);
+ const second={dropoff:4,full_service:5,rushPerLb:2,extraBag:15,contractor:2};assert.equal((await owner.request('/api/management/pricing',{method:'POST',body:{...second,pin:'246810'}})).status,200);
+ const saved=(await customer.request('/api/orders')).data.orders[0];assert.equal(saved.customer_rate_per_lb,3.25);assert.equal(saved.contractor_rate_per_lb,1.5);
+ const management=(await owner.request('/api/management')).data;assert.deepEqual(management.pricing,second);assert.equal(management.pricingPinSet,true);assert.equal(JSON.stringify(management).includes('246810'),false);
+ const notices=(await customer.request('/api/notices')).data.notices;assert.equal(notices[0].type,'pricing');assert.deepEqual(notices[0].pricing,second);
+});
