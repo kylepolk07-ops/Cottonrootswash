@@ -16,6 +16,7 @@ const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const AGREEMENT_VERSION='pilot-2026-10-22-v1';
+const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','pilot_data'],contractor:['platform_role','independent_business','pilot_data']};
 export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin){
@@ -48,11 +49,16 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
  }
  const sessions=new Map(),attempts=new Map();
+ const revokeSessions=userId=>{for(const [key,value] of sessions)if(value.userId===userId)sessions.delete(key)};
  const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
+ // The pilot persists one state document. Serialize requests so an awaited
+ // provider call can never roll an unrelated concurrent mutation backward.
+ let requestQueue=Promise.resolve();
  const server=http.createServer(async(req,res)=>{
+  const prior=requestQueue;let release;requestQueue=new Promise(resolve=>{release=resolve});await prior;
   const headers={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",'Permissions-Policy':'camera=(self), microphone=(), geolocation=()'};
   const send=(status,data)=>{res.writeHead(status,headers);res.end(JSON.stringify(data))};
   try{
@@ -91,7 +97,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     }
     if(req.method==='GET'&&req.url==='/trial-qr'){
      headers['Content-Type']='text/html; charset=utf-8';headers['Cache-Control']='no-store';headers['Referrer-Policy']='no-referrer';
-     res.writeHead(200,headers);res.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotton Roots app QR</title><style>body{margin:0;background:#f8f0dc;color:#173f32;font:18px system-ui;text-align:center}main{max-width:520px;margin:auto;padding:32px 20px}img{display:block;width:min(82vw,420px);height:auto;margin:24px auto;background:white;padding:12px;border-radius:20px}p{line-height:1.5}a{color:#173f32;font-weight:700}</style></head><body><main><h1>Cotton Roots &amp; Co.</h1><p>Scan with your phone camera to open the private test app.</p><img src="/trial-qr.png" alt="QR code for the private Cotton Roots test app"><p>The QR contains only the website address. You will still need your private PIN.</p><p><a href="/access">Open the app on this device</a></p></main></body></html>');return;
+     res.writeHead(200,headers);res.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotton Roots app QR</title><style>body{margin:0;background:#f8f0dc;color:#173f32;font:18px system-ui;text-align:center}main{max-width:520px;margin:auto;padding:32px 20px}img{display:block;width:min(82vw,420px);height:auto;margin:24px auto;background:white;padding:12px;border-radius:20px}p{line-height:1.5}a{color:#173f32;font-weight:700}</style></head><body><main><h1>Cotton Roots &amp; Co.</h1><p>Scan with your phone camera to open the private test app.</p><img src="/trial-qr.png" alt="QR code for the private Cotton Roots test app"><p>The QR contains only the website address. You will still need your private access code.</p><p><a href="/access">Open the app on this device</a></p></main></body></html>');return;
     }
     if(await privateAccess(req,res,headers))return;
    }else if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
@@ -136,11 +142,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    }
    const sid=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('crc_session='))?.slice(12);
    const session=sid&&sessions.get(hash(sid));if(!session||session.expires<Date.now())fail(401,'Sign in required');
-   const user=state.users.find(u=>u.id===session.userId);if(!user)fail(401,'Sign in required');
+   const user=state.users.find(u=>u.id===session.userId);if(!user||user.active===false){if(user)revokeSessions(user.id);fail(401,'Sign in required')}
    const agreementRequired=['customer','contractor'].includes(user.role)&&user.agreement_version!==AGREEMENT_VERSION;
    if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,agreement:{version:AGREEMENT_VERSION,required:agreementRequired},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
     if(path==='/api/dashboard'){
      if(user.role==='customer'){
       const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -177,6 +183,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      return send(200,{synthetic:true,bagToken:state.bags[0]?.token,stationToken:state.stationToken});
     }
+    const bagQrMatch=path.match(/^\/api\/management\/bags\/([^/]+)\/qr$/);
+    if(bagQrMatch){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     const bag=state.bags.find(b=>b.id===decodeURIComponent(bagQrMatch[1]));if(!bag||bag.status==='retired')fail(404,'Active bag unavailable');
+     const svg=await QRCode.toString(bag.token,{type:'svg',errorCorrectionLevel:'M',margin:2,width:360});
+     headers['Content-Type']='image/svg+xml; charset=utf-8';headers['Content-Disposition']=`inline; filename="${bag.id}.svg"`;
+     res.writeHead(200,headers);res.end(svg);return;
+    }
     if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(publicOrder),audit:state.audit})}
     fail(404,'Not found');
    }
@@ -188,13 +202,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const before=JSON.stringify(state);let result;
    try {
     if(path==='/api/agreements/accept'){
-     if(!['customer','contractor'].includes(user.role)||body.version!==AGREEMENT_VERSION||body.accepted!==true)fail(400,'All agreement conditions must be accepted');
-     user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();result={user:publicUser(user)};
+     const required=AGREEMENT_CONDITIONS[user.role]||[];
+     if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
+     user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();user.agreement_conditions=[...required];result={user:publicUser(user)};
     }else if(path==='/api/payments/checkout'){
      if(payment?.provider!=='stripe'||payment.mode!=='test')fail(503,'Test payments are not configured');
      if(user.role!=='customer')fail(403,'Customer required');
      const order=state.orders.find(order=>order.id===body.orderId&&order.customer_id===user.id);if(!order)fail(404,'Order not found');
      if(order.status!=='payment_pending'||order.payment_verified)fail(409,'Order is not awaiting payment');
+     if(order.stripe_checkout_session_id)fail(409,'A test checkout is already open for this order');
      const baseAmountCents=Math.round(Number(order.total)*100);if(!Number.isSafeInteger(baseAmountCents)||baseAmountCents<=0)fail(409,'Verified order total required');
      const pricing=estimateStripeTestCharge(baseAmountCents,payment);
      const providerIdempotencyKey=hash(`stripe-test:${user.id}:${order.id}:${requestKey}`);
@@ -218,7 +234,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      bag.exchange_requested_at??=new Date().toISOString();result={bag:{id:bag.id,exchange_requested_at:bag.exchange_requested_at}};
     }else if(path==='/api/claim'){
      if(user.role!=='customer')fail(403,'Customer required');
-     const bag=state.bags.find(b=>b.token===body.bagToken);if(!bag)fail(409,'Bag unavailable');
+     const bag=state.bags.find(b=>b.token===body.bagToken&&b.status!=='retired');if(!bag)fail(409,'Bag unavailable');
      if(body.boxAcknowledged!==true||body.lockedAcknowledged!==true)fail(400,'Box and lock acknowledgment required');
      if(bag.customer_id===user.id){result={bag:{id:bag.id,claimed_at:bag.claimed_at,first_return_due:bag.first_return_due},alreadyRegistered:true};}
      else {
@@ -230,7 +246,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='customer')fail(403,'Customer required');
      if(!['dropoff','full_service'].includes(body.service)||!['standard','own','contact'].includes(body.detergent))fail(400,'Invalid booking');
      if(body.service==='full_service')fail(409,'Home collection routing is not yet available');
-     const bag=state.bags.find(b=>b.customer_id===user.id);if(!bag)fail(409,'Claim a bag first');
+     const bag=state.bags.find(b=>b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(409,'Claim an active bag first');
      if(state.orders.some(o=>o.bag_id===bag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Bag already has an active order');
      const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,created_at:new Date().toISOString(),due_at:null,due_note:'Deadline is set from the verified shop drop-off time.'};
      state.orders.push(order);result={order};
@@ -246,17 +262,17 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');
      if(state.users.some(account=>account.username===username))fail(409,'That username is already in use');
      const salt=token(),account={id:token().slice(0,24),username,role:body.role,salt,passwordHash:scryptSync(temporaryPassword,salt,64).toString('hex'),approved:body.role==='customer',days:[],preference:'both',created_at:new Date().toISOString(),pilot:true};
-     state.users.push(account);result={user:publicUser(account),temporaryPassword};
+     state.users.push(account);result={user:publicUser(account)};
     }else if(/^\/api\/management\/accounts\/[^/]+$/.test(path)){
      if(user.role!=='owner')fail(403,'Owner access required');const id=path.split('/').at(-1),account=state.users.find(a=>a.id===id);if(!account)fail(404,'Account not found');
-     if(body.action==='set_active'){if(typeof body.active!=='boolean'||account.id===user.id)fail(400,'That account cannot be changed');account.active=body.active;result={user:publicUser(account)};}
-     else if(body.action==='reset_password'){const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');const salt=token();account.salt=salt;account.passwordHash=scryptSync(temporaryPassword,salt,64).toString('hex');account.password_reset_at=new Date().toISOString();result={user:publicUser(account),temporaryPassword};}
+     if(body.action==='set_active'){if(typeof body.active!=='boolean'||account.id===user.id)fail(400,'That account cannot be changed');account.active=body.active;if(!body.active)revokeSessions(account.id);result={user:publicUser(account)};}
+     else if(body.action==='reset_password'){const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');const salt=token();account.salt=salt;account.passwordHash=scryptSync(temporaryPassword,salt,64).toString('hex');account.password_reset_at=new Date().toISOString();revokeSessions(account.id);result={user:publicUser(account)};}
      else if(body.action==='update_profile'){const displayName=typeof body.displayName==='string'?body.displayName.trim():'';const phone=typeof body.phone==='string'?body.phone.trim():'';const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';if(displayName.length>80||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');account.displayName=displayName;account.phone=phone;account.email=email;result={user:publicUser(account)};}
      else fail(400,'Unsupported account action');
     }else if(path==='/api/management/bags'){
      if(user.role!=='owner')fail(403,'Owner access required');
      if(body.action==='add'){const id=typeof body.id==='string'?body.id.trim().toLowerCase():'';if(!/^bag-[a-z0-9-]{3,32}$/.test(id))fail(400,'Use a bag ID such as bag-002');if(state.bags.some(b=>b.id===id))fail(409,'That bag ID already exists');state.bags.push({id,token:token(),customer_id:null,status:'active',created_at:new Date().toISOString()});result={bag:{id,status:'active'}};}
-     else if(body.action==='exchange'){const oldBag=state.bags.find(b=>b.id===body.oldBagId&&b.customer_id),newBag=state.bags.find(b=>b.id===body.newBagId&&b.status!=='retired'&&!b.customer_id);if(!oldBag||!newBag)fail(409,'Choose a registered old bag and an available replacement bag');const customerId=oldBag.customer_id;oldBag.status='retired';oldBag.retired_at=new Date().toISOString();oldBag.replaced_by=newBag.id;oldBag.previous_customer_id=customerId;oldBag.customer_id=null;newBag.customer_id=customerId;newBag.claimed_at=new Date().toISOString();newBag.replaces=oldBag.id;result={oldBag:{id:oldBag.id,status:oldBag.status},newBag:{id:newBag.id,status:'active',customer_id:customerId}};}
+     else if(body.action==='exchange'){const oldBag=state.bags.find(b=>b.id===body.oldBagId&&b.customer_id&&b.status!=='retired'),newBag=state.bags.find(b=>b.id===body.newBagId&&b.status!=='retired'&&!b.customer_id);if(!oldBag||!newBag)fail(409,'Choose a registered old bag and an available replacement bag');if(state.orders.some(o=>o.bag_id===oldBag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Finish or cancel the active order before exchanging this bag');const customerId=oldBag.customer_id;oldBag.status='retired';oldBag.retired_at=new Date().toISOString();oldBag.replaced_by=newBag.id;oldBag.previous_customer_id=customerId;oldBag.customer_id=null;newBag.customer_id=customerId;newBag.claimed_at=new Date().toISOString();newBag.replaces=oldBag.id;result={oldBag:{id:oldBag.id,status:oldBag.status},newBag:{id:newBag.id,status:'active',customer_id:customerId}};}
      else fail(400,'Unsupported bag action');
     }else if(path==='/api/management/approve'){
      if(!staff(user))fail(403,'Management access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');applicant.approved=true;result={user:publicUser(applicant)};
@@ -282,10 +298,12 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      }
     }else fail(404,'Not found');
     state.audit.push({id:token().slice(0,24),actor:user.id,at:new Date().toISOString(),path,action:body.action||path.split('/').pop(),order_id:result.order?.id,prior_status:JSON.parse(before).orders.find(o=>o.id===result.order?.id)?.status,new_status:result.order?.status,request_id:requestKey});
-    state.keys[key]={fingerprint,result:structuredClone(result)};save();
+    // The reusable physical lock code must never be copied into persistent
+    // idempotency storage. Its issuance timestamp is naturally idempotent.
+    if(path!=='/api/bag-box/access')state.keys[key]={fingerprint,result:structuredClone(result)};save();
    }catch(e){state=JSON.parse(before);throw e}
    send(200,result);
-  }catch(e){send(e.status||500,{error:e.status?e.message:'Internal server error'})}
+  }catch(e){send(e.status||500,{error:e.status?e.message:'Internal server error'})}finally{release()}
  });
  return {server,close:()=>{server.close();db.close()}};
 }

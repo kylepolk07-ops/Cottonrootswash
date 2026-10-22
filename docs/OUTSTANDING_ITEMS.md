@@ -2,12 +2,12 @@
 
 ## Available now
 
-Private single-process synthetic staging: separate reference-style Customer and Contractor mobile interfaces, protected Management, role dashboards, guided custody steps, a shared authenticated API, SQLite persistence, CSRF/origin checks, Texas shop deadlines, rounded weights, idempotency, audit and pending earnings. A free disposable Render trial is owner-created; data may reset.
+Private single-process pilot staging: separate Customer and Contractor mobile interfaces, separate protected Management workspaces, guided custody steps, unique printable bag QR labels, a shared authenticated API, Render-disk SQLite persistence, CSRF/origin checks, Texas shop deadlines, rounded weights, idempotency, audit and a non-paying test ledger.
 
 ## Verified
 
-- 35 automated tests passed with no failures or skips: business rules, role dashboards, custody, authorization, deadline scheduling, staging shortcut isolation, spoofed payment rejection, idempotency, request limits, Host/Origin, login throttling and audit redaction.
-- Headless Chromium phone-size full workflow passed repeatedly, including final lead rerun; no browser exceptions. Screenshots in ignored test-results/. Real device/camera behavior is untested.
+- 46 automated tests passed with no failures or skips: business rules, role dashboards, custody, authorization, agreement enforcement, management account controls, bag QR/exchange safety, deadline scheduling, Stripe sandbox reconciliation, idempotency, request limits, Host/Origin, login throttling and audit redaction.
+- Two headless Chromium phone-size suites passed, including the complete Customer/Contractor custody journey and all five separate Management workspaces; no browser exceptions. Screenshots are in ignored `test-results/`. Broader real-device camera testing remains outstanding.
 - Frozen install and server syntax checks passed. The QR generator is now a pinned direct runtime dependency with transitive packages. A fresh registry audit was unavailable in the final bag-QR run, so the earlier zero-dependency audit result no longer applies. This is not a penetration test or blanket security assurance.
 - CI definition is included; its remote run result has not been verified. Source is pushed on `staging/railway-private`. Managed Postgres migration has not been applied.
 
@@ -18,7 +18,8 @@ An authorized private staging host/account and deployment access. No connected h
 ## Remaining implementation
 
 - Managed verified signup, email verification/recovery, owner MFA and least-privilege staff roles; currently synthetic fixtures only.
-- Managed backend deployment, migration/RLS tests, secret storage, encrypted backups, actual backup/restore exercise, retention, tamper-resistant audit and monitoring. Local SQLite mutation persistence is tested; backup recovery is not.
+- Managed database migration/RLS tests, off-host encrypted backups, an actual restore exercise, retention, tamper-resistant audit and monitoring. Render-disk SQLite persistence is single-instance pilot storage; backup recovery is not implemented.
+- Durable payout ledger and Stripe Connect onboarding before any contractor payout. The current Money screen is test-only and sends no money.
 - Real business due-date calendar/holidays and location time rules; current due dates are explicitly synthetic. First bag 24h deadline is recorded; charges remain disabled.
 - Rotating station/box access tokens, SMS consent/access codes, real bag provisioning, offline retry queue and multi-device physical custody checks. Station token knowledge does not prove location.
 - Contractor application, legally reviewed agreement, onboarding checklist, eligibility scheduling; private synthetic contractors are preapproved.

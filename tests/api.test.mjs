@@ -58,11 +58,12 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
  denied(await c.request('/api/management'));
  const management=await owner.request('/api/management');assert.equal(management.status,200);assert.ok(Array.isArray(management.data.audit));
  const pilotPassword='private-pilot-password-123';
- const created=await owner.request('/api/management/accounts',{method:'POST',body:{role:'customer',username:'pilot-user',temporaryPassword:pilotPassword}});assert.equal(created.status,200);assert.equal(created.data.user.username,'pilot-user');assert.equal(created.data.temporaryPassword,pilotPassword);
+ const created=await owner.request('/api/management/accounts',{method:'POST',body:{role:'customer',username:'pilot-user',temporaryPassword:pilotPassword}});assert.equal(created.status,200);assert.equal(created.data.user.username,'pilot-user');assert.equal(created.data.temporaryPassword,undefined);
  denied(await c.request('/api/management/accounts',{method:'POST',body:{role:'customer',username:'not-owner',temporaryPassword:pilotPassword}}));
  const pilotLogin=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'pilot-user',password:pilotPassword})});assert.equal(pilotLogin.status,200);const pilotSession=await pilotLogin.json(),pilotCookie=pilotLogin.headers.get('set-cookie').split(';')[0];
  assert.equal((await h.anonymous('/api/dashboard',{headers:{cookie:pilotCookie}})).status,428);
- const accepted=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:'pilot-2026-10-22-v1',accepted:true})});assert.equal(accepted.status,200);
+ const bypassed=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:'pilot-2026-10-22-v1',accepted:true})});assert.equal(bypassed.status,400);
+ const accepted=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:'pilot-2026-10-22-v1',accepted:true,conditions:['platform_role','customer_contractor_service','pilot_data']})});assert.equal(accepted.status,200);
  assert.equal((await h.anonymous('/api/dashboard',{headers:{cookie:pilotCookie}})).status,200);
  assert.ok(!JSON.stringify((await owner.request('/api/management')).data).includes(pilotPassword));
  denied(await c.request('/api/claim',{method:'POST',csrf:'invalid',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}}));
@@ -80,6 +81,18 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
  denied(await action(c,o.id,'square_payment_confirmed',{verifiedServerWebhook:true,squareEventId:'forged',payment_verified:true,role:'owner'}));
  denied(await c.request('/api/uploads',{method:'POST',body:{name:'license.jpg'}}));
  denied(await owner.request('/api/payments',{method:'POST',body:{orderId:o.id}}));
+});
+
+test('management bag labels, exchanges and account controls fail safely',async t=>{
+ const h=await harness(t),customer=await h.client('customer'),other=await h.client('customer2'),owner=await h.client('owner');
+ assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
+ const added=await owner.request('/api/management/bags',{method:'POST',body:{action:'add',id:'bag-002'}});assert.equal(added.status,200);
+ const qr=await owner.request('/api/management/bags/bag-002/qr');assert.equal(qr.status,200);assert.match(qr.headers.get('content-type'),/image\/svg/);
+ assert.equal((await customer.request('/api/bags/exchange-request',{method:'POST',body:{bagId:'bag-001'}})).status,200);
+ assert.equal((await owner.request('/api/management/bags',{method:'POST',body:{action:'exchange',oldBagId:'bag-001',newBagId:'bag-002'}})).status,200);
+ assert.equal((await other.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,409,'retired bag QR cannot be reclaimed');
+ assert.equal((await owner.request('/api/management/accounts/customer2',{method:'POST',body:{action:'set_active',active:false}})).status,200);
+ assert.equal((await other.request('/api/me')).status,401,'pausing an account revokes its active session');
 });
 
 test('role dashboards summarize only authorized product data',async t=>{

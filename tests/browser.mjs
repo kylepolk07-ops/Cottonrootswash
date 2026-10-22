@@ -22,10 +22,10 @@ const login=async(name,app)=>{await page.goto(base+'/'+app);const a=fixtures.acc
 const heading=t=>page.getByRole('heading',{name:t,exact:true}).waitFor();
 try{
  await login('customer','customer');
- await click('My bags');await click('Claim a bag at the box');
- await page.getByLabel('I scanned the QR inside the lid. I am taking a bag.').check();
- await page.getByLabel('Scan your unique bag QR',{exact:true}).fill(fixtures.bagToken);
- await click('Next: close the box');await page.getByLabel('I shut and locked the box.').check();await click('Claim this bag');await heading('Your Cotton Roots bags');
+ await click('My bags');await click('Scan and register my bag');
+ await page.getByLabel('I took this bag from the box.').check();
+ await page.getByLabel('Scan the unique bag QR',{exact:true}).fill(fixtures.bagToken);
+ await click('Next: close the box');await page.getByLabel('I shut and locked the box.').check();await click('Register this bag to me');await heading('Your Cotton Roots bags');
  await click('New order');await click('Next: choose detergent');await click('Next: review order');await click('Book this order');await heading('Your laundry, step by step');
  await click('Drop off this bag');await page.getByLabel('Scan the matching bag QR',{exact:true}).fill('wrong-token');await click('Next: scan station');await page.getByLabel('Scan the shop station QR',{exact:true}).fill(fixtures.stationToken);await click('Confirm this step');await page.getByRole('status').filter({hasText:'Bag owner and wall QR must be verified'}).waitFor();
  await click('Back: scan bag again');await page.getByLabel('Scan the matching bag QR',{exact:true}).fill(fixtures.bagToken);await click('Next: scan station');await page.getByLabel('Scan the shop station QR',{exact:true}).fill(fixtures.stationToken);await click('Confirm this step');await heading('Your laundry, step by step');
@@ -43,8 +43,12 @@ try{
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await click('Sign out');await login('customer','customer');await click('My laundry');await page.getByText(/TEST MODE ESTIMATE/).waitFor();await page.getByRole('button',{name:'Open Stripe test checkout',exact:true}).waitFor();assert.equal(await page.getByText(/Final live pricing and fee rules are not approved/).count(),1);
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
- await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');await page.getByRole('heading',{name:'Audit trail',exact:true}).waitFor();assert.ok(await page.locator('pre').count()>0);await page.screenshot({path:resolve(shotDir,'management-mobile.png'),fullPage:true});
+ await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');
+ for(const area of ['Customers','Contractors','Bag inventory','Money','Pilot tools']){
+  await page.getByRole('button',{name:new RegExp(`^${area}`)}).click();await heading(area);await click('← Management home');await heading('Management');
+ }
+ await page.screenshot({path:resolve(shotDir,'management-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
  assert.deepEqual(errors,[]);
- console.log('PASS mobile browser flow: claim, booking, wrong QR rejection, dropoff, persistent reload, availability, acceptance, rounded weight, checkout, complete, return, Stripe test estimate, pending earnings, customer/contractor management denial, owner management audit. No browser exceptions.');
+ console.log('PASS mobile browser flow: claim, booking, wrong QR rejection, dropoff, persistent reload, availability, acceptance, rounded weight, checkout, complete, return, Stripe test estimate, pending earnings, customer/contractor management denial, and all five owner Management workspaces. No browser exceptions.');
 }finally{await context.close();await browser.close();await new Promise(r=>application.server.close(r));application.close();rmSync(dir,{recursive:true,force:true})}

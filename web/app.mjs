@@ -409,6 +409,9 @@ function agreement() {
     const result = await api("/api/agreements/accept", {
       version: agreementVersion,
       accepted: true,
+      conditions: customer
+        ? ["platform_role", "customer_contractor_service", "pilot_data"]
+        : ["platform_role", "independent_business", "pilot_data"],
     });
     user = result.user;
     nav.hidden = false;
@@ -1183,7 +1186,7 @@ async function management() {
       const login = node("div", undefined, { class: "bag-card" });
       login.append(
         node("strong", "Username: " + result.user.username),
-        node("p", "Temporary password: " + result.temporaryPassword),
+        node("p", "Temporary password: " + password.value),
       );
       done.append(
         login,
@@ -1388,7 +1391,7 @@ function editManagedAccount(account) {
     c,
     "Reset password",
     async () => {
-      const result = await api(
+      await api(
         "/api/management/accounts/" + encodeURIComponent(account.id),
         { action: "reset_password", temporaryPassword: password.value },
       );
@@ -1398,7 +1401,7 @@ function editManagedAccount(account) {
         "Password reset",
         "Give this temporary password to the account holder privately.",
       );
-      done.append(node("p", result.temporaryPassword, { class: "note" }));
+      done.append(node("p", password.value, { class: "note" }));
       button(done, "Back to Management", () => route("management"));
     },
     true,
@@ -1495,6 +1498,15 @@ function bagInventory(data) {
     ])
       tr.append(node("td", value));
     const action = node("td");
+    if (bag.status !== "retired") {
+      const qr = node("a", "Show / print QR", {
+        href: "/api/management/bags/" + encodeURIComponent(bag.id) + "/qr",
+        target: "_blank",
+        rel: "noopener",
+        class: "button secondary",
+      });
+      action.append(qr);
+    }
     if (bag.exchange_requested_at) {
       const replacements = (data.bags || []).filter(
         (b) => !b.customer_id && b.status !== "retired",
@@ -1533,7 +1545,7 @@ function createPilotLogin(role) {
   button(c, "Create login", async () => {
     const result = await api("/api/management/accounts", { role, username: username.value, temporaryPassword: password.value });
     main.replaceChildren(); const done = card("✓", "Login created", "Give these details to the tester privately. The password is shown once.");
-    done.append(node("p", `Username: ${result.user.username}`, { class: "note" }), node("p", `Temporary password: ${result.temporaryPassword}`, { class: "note" }));
+    done.append(node("p", `Username: ${result.user.username}`, { class: "note" }), node("p", `Temporary password: ${password.value}`, { class: "note" }));
     button(done, "Back", () => route("management"));
   });
   button(c, "Cancel", () => route("management"), true);

@@ -1,17 +1,21 @@
-# Account authorization required. Verify Render's displayed free-plan terms before applying.
+# Persistent private pilot. Billing remains controlled in the Render dashboard.
 services:
   - type: web
     name: cotton-roots-private-trial
     runtime: docker
-    plan: free
+    plan: starter
     branch: staging/phone-trial
     numInstances: 1
     healthCheckPath: /healthz
+    disk:
+      name: cotton-roots-pilot-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: CRC_DEPLOYMENT
         value: render
-      - key: CRC_EPHEMERAL_TEST
-        value: "1"
+      - key: CRC_DATA_DIR
+        value: /var/data
       - key: CRC_STAGING_USER
         value: trial
       - key: CRC_STAGING_PASSWORD
