@@ -231,8 +231,8 @@ function login() {
     "🌿",
     "Welcome back",
     app === "customer"
-      ? "Your Customer username is ready. Enter the same private code that opened this preview."
-      : "Your Contractor username is ready. Enter the same private code that opened this preview. Owners can replace the username with owner.",
+      ? "Sign in with your saved Customer username and password."
+      : "Sign in with your Contractor username and password. Owners use their Management login here.",
   );
   const f = node("form");
   c.append(f);
@@ -240,7 +240,7 @@ function login() {
       f,
       "Username",
       "text",
-      app === "customer" ? "customer" : "contractor",
+      "",
     ),
     password = field(f, "Password", "password");
   username.autocomplete = "username";
@@ -292,6 +292,8 @@ function contractorApplication(){
 async function render() {
   if (!user) return login();
   document.body.dataset.sessionRole=user.role;
+  const correctApp=user.role==="customer"?"customer":["contractor","owner","staff"].includes(user.role)?"contractor":null;
+  if(correctApp&&correctApp!==app){try{localStorage.setItem("crc_account_type",correctApp)}catch{}location.replace(`/${correctApp}`);return}
   if (
     ["customer", "contractor"].includes(user.role) &&
     agreementVersion &&

@@ -24,6 +24,8 @@ const heading=t=>page.getByRole('heading',{name:t,exact:true}).waitFor();
 try{
  await login('customer','customer');
  assert.equal(await page.locator('header').getByText('customer',{exact:true}).count(),1);assert.equal(await page.locator('body').getAttribute('data-session-role'),'customer');
+ await page.goto(base+'/contractor');await page.waitForURL(base+'/customer');await page.getByRole('button',{name:'Sign out',exact:true}).waitFor();
+ await page.goto(base+'/');await page.waitForURL(base+'/customer');
  await click('Profile');await page.getByLabel('Name',{exact:true}).fill('Customer Test');await page.getByLabel('Phone',{exact:true}).fill('325-555-0101');await page.getByLabel('Email',{exact:true}).fill('customer@example.com');await click('Save and review');await page.getByRole('button',{name:'Verify my information',exact:true}).waitFor();await click('Verify my information');await page.getByText('✓ Verified',{exact:true}).waitFor();await page.getByRole('button',{name:'Edit information',exact:true}).waitFor();
  await click('My bags');await click('Scan and register my bag');
  assert.equal(await page.locator('input[data-scan-title]:visible').count(),0,'QR tokens must not have a visible typing field');
