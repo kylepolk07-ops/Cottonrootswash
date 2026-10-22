@@ -54,6 +54,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   const bagToken=token();state.bags.push({id:'bag-001',token:bagToken,customer_id:null});
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
  }
+ // Older verified payments waited for a manual staff release. Returned bags
+ // are already secured at the shop, so verified payment now makes them ready
+ // for the owning customer to collect with an exact bag scan.
+ let pickupMigration=false;for(const order of state.orders){if(order.status==='paid_hold'&&order.payment_verified===true){order.status='paid_ready';order.ready_for_pickup=true;pickupMigration=true}}
+ if(pickupMigration)save();
  const attempts=new Map();
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
  const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});

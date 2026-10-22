@@ -647,9 +647,9 @@ async function orders() {
       if (o.status === "awaiting_dropoff")
         button(c, "Drop off this bag", () => actionWizard(o, "drop_off"));
       if (o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup)
-        button(c, "Collect my paid bag", () =>
-          actionWizard(o, "customer_pickup"),
-        );
+        c.append(node("p","Your laundry is paid and ready. Pick it up at the shop, then scan the QR on your bag to complete pickup.",{class:"note"}));
+      if (o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup)
+        button(c, "Scan bag and collect", () => actionWizard(o, "customer_pickup"));
       if (o.status === "picked_up" && !o.rating)
         button(c, "Leave a rating", () => actionWizard(o, "rate"));
       if (
