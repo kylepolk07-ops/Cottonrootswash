@@ -137,3 +137,10 @@ Verified syntax and repeatedly ran isolated mobile Chromium full custody workflo
 - Paired with the mobile usability reviewer before editing. Product language/flow changes are in `web/app.mjs`; mobile touch, focus, navigation and narrow-screen changes are in `web/style.css` and the independent product browser test.
 - `npm run check` and the product experience browser suite passed. The review requires the disposable six-digit PIN to be exactly numeric and the shareable QR to contain only the HTTPS access URL; Management retains its separate strong password.
 - Full rationale and remaining real-device limit: `docs/OWNER_ADVOCATE_REPORT.md`.
+
+# 2026-10-21 — Stripe test-mode groundwork
+
+- Added test-only Stripe configuration, hosted Checkout request construction, raw webhook signature verification and strict completed-session reconciliation.
+- Wired customer-owned hosted test Checkout and exact raw-body `/api/payments/stripe/webhook`; session/event idempotency is persisted with the synthetic order. Live keys fail closed and unconfigured staging retains payment-pending behavior.
+- Added a clearly labeled configurable test payment-cost estimate. It does not alter advertised laundry rates or represent an approved live surcharge. No real payment, banking or identity collection was enabled.
+- Kept the existing Square helper unchanged for reviewable rollback; see `docs/STRIPE_TEST_MODE.md`.

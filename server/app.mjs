@@ -9,11 +9,12 @@ import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal} from '../shared/rules.mjs';
+import {verifyStripeSignature,createStripeTestCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch}={}) {
  if(remoteOrigin){
   const url=new URL(remoteOrigin);
   if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
@@ -32,6 +33,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
  let row=db.prepare('SELECT value FROM state WHERE id=1').get();
  let state=row?JSON.parse(row.value):{users:[],bags:[],orders:[],audit:[],keys:{},stationToken:token()};
+ state.paymentEvents??=[];
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
  if(!row && fixtures){
   const accounts=['customer','customer2','contractor','contractor2','owner'].map(role=>{
@@ -46,7 +48,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
- const publicOrder=o=>{const {bag_token,...safe}=o;return safe};
+ const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
  const server=http.createServer(async(req,res)=>{
   const headers={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",'Permissions-Policy':'camera=(self), microphone=(), geolocation=()'};
   const send=(status,data)=>{res.writeHead(status,headers);res.end(JSON.stringify(data))};
@@ -61,6 +63,25 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(requestHost!==remoteHost)fail(403,'Remote host required');
     if(req.headers['x-forwarded-proto']!=='https')fail(403,'HTTPS required');
     headers['Strict-Transport-Security']='max-age=31536000';
+    const remotePath=new URL(req.url,remoteOrigin).pathname;
+    if(remotePath==='/api/payments/stripe/webhook'){
+     if(payment?.provider!=='stripe'||payment.mode!=='test')fail(404,'Not found');
+     if(req.method!=='POST'||!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
+     let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>65536)fail(413,'Request too large');chunks.push(chunk)}
+     const rawBody=Buffer.concat(chunks),signatureHeader=req.headers['stripe-signature'];
+     if(!verifyStripeSignature({rawBody,signatureHeader,webhookSecret:payment.webhookSecret}))fail(400,'Invalid webhook');
+     let event;try{event=JSON.parse(rawBody.toString())}catch{fail(400,'Invalid webhook')}
+     if(state.paymentEvents.includes(event.id))return send(200,{received:true,duplicate:true});
+     const orderId=event.data?.object?.client_reference_id,index=state.orders.findIndex(order=>order.id===orderId),order=state.orders[index];
+     if(!order||!order.stripe_checkout_session_id||!Number.isSafeInteger(order.stripe_checkout_total_cents))fail(409,'Unknown checkout');
+     const before=JSON.stringify(state);
+     try{
+      const paymentRecord=reconcileStripeCheckout(event,{orderId:order.id,customerId:order.customer_id,amountCents:order.stripe_checkout_total_cents,currency:'USD',checkoutSessionId:order.stripe_checkout_session_id,processedEventIds:new Set(state.paymentEvents)});
+      const updated=transition(order,ACTION.PAYMENT,{verifiedServerWebhook:true,paymentEventId:event.id});
+      Object.assign(updated,{payment_provider:'stripe_test',stripe_payment_intent_id:paymentRecord.paymentIntentId,stripe_checkout_session_id:paymentRecord.sessionId});state.orders[index]=updated;state.paymentEvents.push(event.id);
+      state.audit.push({id:token().slice(0,24),actor:'stripe-test-webhook',at:new Date().toISOString(),path:remotePath,action:'payment_verified',order_id:order.id,prior_status:order.status,new_status:updated.status,request_id:event.id});save();return send(200,{received:true});
+     }catch(error){state=JSON.parse(before);fail(409,error.message)}
+    }
     if(req.method==='GET'&&req.url==='/trial-qr.png'){
      headers['Content-Type']='image/png';headers['Cache-Control']='public, max-age=3600';
      res.writeHead(200,headers);res.end(readFileSync(resolve(root,'web/trial-qr.png')));return;
@@ -114,7 +135,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const session=sid&&sessions.get(hash(sid));if(!session||session.expires<Date.now())fail(401,'Sign in required');
    const user=state.users.find(u=>u.id===session.userId);if(!user)fail(401,'Sign in required');
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,staging:{synthetic:true,disposable}});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
     if(path==='/api/dashboard'){
      if(user.role==='customer'){
       const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -154,7 +175,18 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    if(state.keys[key]){if(state.keys[key].fingerprint!==fingerprint)fail(409,'Key reused with different request');return send(200,state.keys[key].result)}
    const before=JSON.stringify(state);let result;
    try {
-    if(path==='/api/claim'){
+    if(path==='/api/payments/checkout'){
+     if(payment?.provider!=='stripe'||payment.mode!=='test')fail(503,'Test payments are not configured');
+     if(user.role!=='customer')fail(403,'Customer required');
+     const order=state.orders.find(order=>order.id===body.orderId&&order.customer_id===user.id);if(!order)fail(404,'Order not found');
+     if(order.status!=='payment_pending'||order.payment_verified)fail(409,'Order is not awaiting payment');
+     const baseAmountCents=Math.round(Number(order.total)*100);if(!Number.isSafeInteger(baseAmountCents)||baseAmountCents<=0)fail(409,'Verified order total required');
+     const pricing=estimateStripeTestCharge(baseAmountCents,payment);
+     const providerIdempotencyKey=hash(`stripe-test:${user.id}:${order.id}:${requestKey}`);
+     const checkout=await createStripeTestCheckout({config:payment,orderId:order.id,customerId:user.id,amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
+     order.stripe_checkout_session_id=checkout.sessionId;order.stripe_checkout_base_cents=pricing.baseAmountCents;order.stripe_checkout_fee_cents=pricing.estimatedFeeCents;order.stripe_checkout_total_cents=pricing.totalCents;
+     result={order:publicOrder(order),checkoutUrl:checkout.checkoutUrl,pricing:{currency:'USD',laundrySubtotalCents:pricing.baseAmountCents,estimatedOnlinePaymentCostCents:pricing.estimatedFeeCents,testTotalCents:pricing.totalCents,estimateOnly:true}};
+    }else if(path==='/api/claim'){
      if(user.role!=='customer')fail(403,'Customer required');
      const bag=state.bags.find(b=>b.token===body.bagToken);if(!bag||bag.customer_id)fail(409,'Bag unavailable');
      if(body.boxAcknowledged!==true||body.lockedAcknowledged!==true)fail(400,'Box and lock acknowledgment required');

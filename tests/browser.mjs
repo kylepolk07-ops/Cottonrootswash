@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import {createApp} from '../server/app.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const dir=mkdtempSync(resolve(tmpdir(),'cotton-browser-'));
-const application=await createApp({dataDir:dir,fixtures:true});
+const payment={provider:'stripe',mode:'test',origin:'https://stripe-browser.example',secretKey:'sk_test_1234567890abcdef',webhookSecret:'whsec_1234567890abcdef',feeBps:290,feeFixedCents:30};
+const application=await createApp({dataDir:dir,fixtures:true,payment,stripeFetch:async()=>({ok:true,json:async()=>({id:'cs_test_browser',url:'https://checkout.stripe.com/c/pay/cs_test_browser'})})});
 await new Promise(r=>application.server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${application.server.address().port}`;
 const fixtures=JSON.parse(readFileSync(resolve(dir,'fixtures.json'),'utf8'));
@@ -40,8 +41,10 @@ try{
  await page.reload();await click('My jobs');await click('Laundry is clean');await click('Confirm this step');await click('Scan bag on return');await page.getByLabel('Scan the matching bag QR',{exact:true}).fill(fixtures.bagToken);await click('Confirm this step');await click('Check in at shop');await page.getByLabel('Scan the shop station QR',{exact:true}).fill(fixtures.stationToken);await click('Confirm this step');await page.getByText('Finished · payment pending',{exact:true}).waitFor();
  await click('My pay');await page.getByText('status: pending',{exact:true}).waitFor();await page.screenshot({path:resolve(shotDir,'contractor-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
+ await click('Sign out');await login('customer','customer');await click('My laundry');await page.getByText(/TEST MODE ESTIMATE/).waitFor();await page.getByRole('button',{name:'Open Stripe test checkout',exact:true}).waitFor();assert.equal(await page.getByText(/Final live pricing and fee rules are not approved/).count(),1);
+ assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');await page.getByRole('heading',{name:'Audit trail',exact:true}).waitFor();assert.ok(await page.locator('pre').count()>0);await page.screenshot({path:resolve(shotDir,'management-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
  assert.deepEqual(errors,[]);
- console.log('PASS mobile browser flow: claim, booking, wrong QR rejection, dropoff, persistent reload, availability, acceptance, rounded weight, checkout, complete, return, pending earnings, customer/contractor management denial, owner management audit. No browser exceptions.');
+ console.log('PASS mobile browser flow: claim, booking, wrong QR rejection, dropoff, persistent reload, availability, acceptance, rounded weight, checkout, complete, return, Stripe test estimate, pending earnings, customer/contractor management denial, owner management audit. No browser exceptions.');
 }finally{await context.close();await browser.close();await new Promise(r=>application.server.close(r));application.close();rmSync(dir,{recursive:true,force:true})}

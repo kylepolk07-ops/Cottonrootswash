@@ -6,7 +6,7 @@ export const ACTION=Object.freeze({
   PAYMENT:'square_payment_confirmed', RELEASE:'staff_release', PICKUP:'customer_pickup'
 });
 function requireIt(ok,message){if(!ok)throw new Error(message);}
-/** Pure state transition for server implementation and UI tests. No client action may self-certify Square payment. */
+/** Pure state transition for server implementation and UI tests. No client action may self-certify provider payment. */
 export function transition(order,action,ctx={}){
   requireIt(order && typeof order==='object','Order required');
   const o={...order};
@@ -42,8 +42,9 @@ export function transition(order,action,ctx={}){
       o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;break;
     case ACTION.PAYMENT:
       requireIt(o.status===ORDER_STATUS.PAYMENT_PENDING,'Order not awaiting payment');
-      requireIt(ctx.verifiedServerWebhook===true && typeof ctx.squareEventId==='string' && ctx.squareEventId.length>0,'Verified Square server webhook required');
-      o.payment_verified=true;o.square_event_id=ctx.squareEventId;o.status=ORDER_STATUS.PAID_HOLD;break;
+      {const eventId=ctx.paymentEventId||ctx.squareEventId;
+      requireIt(ctx.verifiedServerWebhook===true && typeof eventId==='string' && eventId.length>0,'Verified payment-provider server webhook required');
+      o.payment_verified=true;o.payment_event_id=eventId;if(ctx.squareEventId)o.square_event_id=ctx.squareEventId;o.status=ORDER_STATUS.PAID_HOLD;break;}
     case ACTION.RELEASE:
       requireIt(o.status===ORDER_STATUS.PAID_HOLD && o.payment_verified===true,'Payment verification required');
       requireIt(ctx.staffAuthorized===true && ctx.bagVerified===true,'Authorized staff must verify bag release');
