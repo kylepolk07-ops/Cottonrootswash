@@ -19,6 +19,8 @@ test('Render configuration fails closed and explicitly selects disposable synthe
  for(const origin of ['http://cotton-test.onrender.com','https://cotton-test.onrender.com/','https://x:y@cotton-test.onrender.com'])assert.throws(()=>runtimeConfig({...env,RENDER_EXTERNAL_URL:origin}));
  assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'12345'}));
  assert.doesNotThrow(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'482731'}));
+ assert.equal(runtimeConfig({...env,CRC_BOX_LOCK_CODE:'4827'}).app.boxLockCode,'4827');
+ for(const code of ['','123','12345','abcd'])assert.throws(()=>runtimeConfig({...env,CRC_BOX_LOCK_CODE:code}));
  assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'abcdef'}));
  assert.throws(()=>runtimeConfig({...env,CRC_STAGING_PASSWORD:'1234567'}));
  for(const key of ['CRC_CUSTOMER_PASSWORD','CRC_CONTRACTOR_PASSWORD','CRC_OWNER_PASSWORD'])assert.throws(()=>runtimeConfig({...env,[key]:'short'}));

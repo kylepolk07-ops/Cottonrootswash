@@ -4,6 +4,7 @@ import {randomBytes,scryptSync,timingSafeEqual,createHash} from 'node:crypto';
 import {mkdirSync,existsSync,writeFileSync,readFileSync,chmodSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import QRCode from 'qrcode';
 import {shopDateKey} from '../shared/calendar.mjs';
 import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
@@ -14,7 +15,8 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
+ if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin){
   const url=new URL(remoteOrigin);
   if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
@@ -161,6 +163,13 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id).map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
     if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>({order_id:o.id,pounds:o.billed_pounds,amount:o.billed_pounds,status:'pending',note:'No payments or payouts connected'}))});
+    if(path==='/api/management/test-kit/bag-qr'){
+     if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
+     const bagToken=state.bags[0]?.token;if(!bagToken)fail(404,'Synthetic bag unavailable');
+     const svg=await QRCode.toString(bagToken,{type:'svg',errorCorrectionLevel:'M',margin:2,width:360});
+     headers['Content-Type']='image/svg+xml; charset=utf-8';headers['Content-Disposition']='inline; filename="cotton-roots-test-bag.svg"';
+     res.writeHead(200,headers);res.end(svg);return;
+    }
     if(path==='/api/management/test-kit'){
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      return send(200,{synthetic:true,bagToken:state.bags[0]?.token,stationToken:state.stationToken});
@@ -186,6 +195,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const checkout=await createStripeTestCheckout({config:payment,orderId:order.id,customerId:user.id,amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
      order.stripe_checkout_session_id=checkout.sessionId;order.stripe_checkout_base_cents=pricing.baseAmountCents;order.stripe_checkout_fee_cents=pricing.estimatedFeeCents;order.stripe_checkout_total_cents=pricing.totalCents;
      result={order:publicOrder(order),checkoutUrl:checkout.checkoutUrl,pricing:{currency:'USD',laundrySubtotalCents:pricing.baseAmountCents,estimatedOnlinePaymentCostCents:pricing.estimatedFeeCents,testTotalCents:pricing.totalCents,estimateOnly:true}};
+    }else if(path==='/api/bag-box/access'){
+     if(user.role!=='customer')fail(403,'Customer required');
+     if(!boxLockCode)fail(503,'Bag box access is not configured');
+     user.box_access_issued_at??=new Date().toISOString();
+     result={accessCode:boxLockCode,issuedAt:user.box_access_issued_at,reusable:true,notice:'Scan the unique QR on the bag to register it to your account.'};
     }else if(path==='/api/claim'){
      if(user.role!=='customer')fail(403,'Customer required');
      const bag=state.bags.find(b=>b.token===body.bagToken);if(!bag||bag.customer_id)fail(409,'Bag unavailable');

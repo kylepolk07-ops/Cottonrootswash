@@ -25,5 +25,6 @@ export function runtimeConfig(env=process.env){
   }
  }
  const payment=stripeTestConfig(env,remoteOrigin);
- return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,fixturePasswords,disposable:provider==='render',payment}};
+ if(env.CRC_BOX_LOCK_CODE!==undefined&&!/^\d{4}$/.test(env.CRC_BOX_LOCK_CODE))throw Error('Box lock code must be exactly four digits');
+ return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,fixturePasswords,disposable:provider==='render',payment,boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
 }

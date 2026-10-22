@@ -8,7 +8,7 @@ Private single-process synthetic staging: separate reference-style Customer and 
 
 - 35 automated tests passed with no failures or skips: business rules, role dashboards, custody, authorization, deadline scheduling, staging shortcut isolation, spoofed payment rejection, idempotency, request limits, Host/Origin, login throttling and audit redaction.
 - Headless Chromium phone-size full workflow passed repeatedly, including final lead rerun; no browser exceptions. Screenshots in ignored test-results/. Real device/camera behavior is untested.
-- Frozen install, server syntax and dependency audit passed. Runtime app has zero third-party dependencies; audit reported zero vulnerabilities. This is not a penetration test or blanket security assurance.
+- Frozen install and server syntax checks passed. The QR generator is now a pinned direct runtime dependency with transitive packages. A fresh registry audit was unavailable in the final bag-QR run, so the earlier zero-dependency audit result no longer applies. This is not a penetration test or blanket security assurance.
 - CI definition is included; its remote run result has not been verified. Source is pushed on `staging/railway-private`. Managed Postgres migration has not been applied.
 
 ## Needed to try on a phone remotely

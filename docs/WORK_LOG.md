@@ -144,3 +144,12 @@ Verified syntax and repeatedly ran isolated mobile Chromium full custody workflo
 - Wired customer-owned hosted test Checkout and exact raw-body `/api/payments/stripe/webhook`; session/event idempotency is persisted with the synthetic order. Live keys fail closed and unconfigured staging retains payment-pending behavior.
 - Added a clearly labeled configurable test payment-cost estimate. It does not alter advertised laundry rates or represent an approved live surcharge. No real payment, banking or identity collection was enabled.
 - Kept the existing Square helper unchanged for reviewable rollback; see `docs/STRIPE_TEST_MODE.md`.
+
+# 2026-10-21 — Owner-displayed synthetic bag QR security review
+
+- Added independent coverage for the owner-only synthetic bag QR used to practice the first-bag claim from a phone while the QR is displayed on the computer.
+- Verified the endpoint stays behind both private access and owner authentication, is unavailable to Customer/Contractor, encodes exactly the existing synthetic bag token, returns no-store/nosniff SVG, and includes no unrelated fixture credentials or identity data.
+- Full server suite passed 42/42. The QR is synthetic staging only; scanning is an authenticated acknowledgment rather than proof of physical custody or lock state.
+# 2026-10-22 — Bag registration and protected box access
+
+Added an owner-only synthetic bag QR for staging and a mobile Customer flow that retrieves the reusable physical box code, scans the unique QR attached to the selected bag, confirms the box was closed, and registers that bag to the signed-in customer. The physical code is supplied only through `CRC_BOX_LOCK_CODE`; its value is absent from source, QR contents, read APIs, Management output, and audit details. Camera monitoring remains an external physical control. Automated checks cover private-gate enforcement, roles, non-disclosure, idempotency, exact QR contents, missing configuration, and invalid code formats. `npm run check` and all 44 automated tests passed.
