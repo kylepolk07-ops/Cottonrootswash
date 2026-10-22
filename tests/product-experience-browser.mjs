@@ -98,7 +98,7 @@ try{
  await post('/api/claim',{bagToken:fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true});
  const created=await post('/api/orders',{service:'dropoff',detergent:'standard',rush_requested:false});
  await post(`/api/orders/${created.order.id}/actions`,{action:'drop_off',bagToken:fixtures.bagToken,stationToken:fixtures.stationToken});
- await page.getByRole('button',{name:'Laundry status',exact:true}).click();
+ await page.getByRole('button',{name:'My laundry',exact:true}).click();
  await page.getByText('Your laundry journey',{exact:true}).waitFor();
  await page.getByText('At the shop',{exact:true}).waitFor();
 

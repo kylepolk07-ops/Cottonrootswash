@@ -303,7 +303,7 @@ async function render() {
       : app === "customer"
       ? [
           ["home", "Home"],
-          ["orders", "Laundry status"],
+          ["orders", "My laundry"],
           ["book", "New order"],
           ["bags", "My bags"],
           ["profile", "Profile"],
@@ -568,7 +568,7 @@ async function orders() {
   filterBox.append(updated);
   const filter = select(
     filterBox,
-    "Show laundry",
+    "Laundry status",
     app === "customer"
       ? [
           ["all", "All my laundry"],
