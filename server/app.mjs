@@ -336,7 +336,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      else fail(400,'Unsupported account action');
     }else if(path==='/api/management/bags'){
      if(user.role!=='owner')fail(403,'Owner access required');
-     if(body.action==='add'){const id=typeof body.id==='string'?body.id.trim().toLowerCase():'';if(!/^bag-[a-z0-9-]{3,32}$/.test(id))fail(400,'Use a bag ID such as bag-002');if(state.bags.some(b=>b.id===id))fail(409,'That bag ID already exists');state.bags.push({id,token:token(),customer_id:null,status:'active',created_at:new Date().toISOString()});result={bag:{id,status:'active'}};}
+     if(body.action==='add'){
+      const highest=state.bags.reduce((max,bag)=>{const match=/^bag-(\d+)$/.exec(bag.id);return match?Math.max(max,Number(match[1])):max},0);let number=highest+1,id;
+      do{id=`bag-${String(number++).padStart(3,'0')}`}while(state.bags.some(b=>b.id===id));
+      state.bags.push({id,token:token(),customer_id:null,status:'active',created_at:new Date().toISOString()});result={bag:{id,status:'active'}};
+     }
      else if(body.action==='exchange'){const oldBag=state.bags.find(b=>b.id===body.oldBagId&&b.customer_id&&b.status!=='retired'),newBag=state.bags.find(b=>b.id===body.newBagId&&b.status!=='retired'&&!b.customer_id);if(!oldBag||!newBag)fail(409,'Choose a registered old bag and an available replacement bag');if(state.orders.some(o=>o.bag_id===oldBag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Finish or cancel the active order before exchanging this bag');const customerId=oldBag.customer_id;oldBag.status='retired';oldBag.retired_at=new Date().toISOString();oldBag.replaced_by=newBag.id;oldBag.previous_customer_id=customerId;oldBag.customer_id=null;newBag.customer_id=customerId;newBag.claimed_at=new Date().toISOString();newBag.replaces=oldBag.id;result={oldBag:{id:oldBag.id,status:oldBag.status},newBag:{id:newBag.id,status:'active',customer_id:customerId}};}
      else fail(400,'Unsupported bag action');
     }else if(path==='/api/management/approve'){

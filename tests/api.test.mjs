@@ -105,7 +105,8 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
 test('management bag labels, exchanges and account controls fail safely',async t=>{
  const h=await harness(t),customer=await h.client('customer'),other=await h.client('customer2'),owner=await h.client('owner');
  assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
- const added=await owner.request('/api/management/bags',{method:'POST',body:{action:'add',id:'bag-002'}});assert.equal(added.status,200);
+ const added=await owner.request('/api/management/bags',{method:'POST',body:{action:'add'}});assert.equal(added.status,200);assert.equal(added.data.bag.id,'bag-002');
+ const nextBag=await owner.request('/api/management/bags',{method:'POST',body:{action:'add'}});assert.equal(nextBag.status,200);assert.equal(nextBag.data.bag.id,'bag-003');
  const qr=await owner.request('/api/management/bags/bag-002/qr');assert.equal(qr.status,200);assert.match(qr.headers.get('content-type'),/image\/svg/);
  const label=await owner.request('/api/management/bags/bag-002/label');assert.equal(label.status,200);assert.match(label.headers.get('content-type'),/text\/html/);
  assert.equal((await customer.request('/api/bags/exchange-request',{method:'POST',body:{bagId:'bag-001'}})).status,200);

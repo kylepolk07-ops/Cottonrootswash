@@ -1658,11 +1658,11 @@ function bagInventory(data) {
     "Add tagged bags, see who has each bag, and complete exchange requests.",
   );
   managementBack(c);
-  const id = field(c, "New bag ID", "text");
-  id.placeholder = "bag-002";
-  button(c, "Add bag to inventory", async () => {
-    await api("/api/management/bags", { action: "add", id: id.value });
-    route("management");
+  c.append(node("p","Bag numbers are generated automatically in order. This prevents duplicate bag IDs and QR tags.",{class:"note"}));
+  button(c, "Generate new bag", async () => {
+    const result=await api("/api/management/bags", { action: "add" });
+    await route("management");
+    message(`${result.bag.id.toUpperCase()} created. Open Print tag when you are ready.`);
   });
   const wrap = node("div", undefined, { class: "table-wrap" }),
     table = node("table"),
