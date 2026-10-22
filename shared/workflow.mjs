@@ -44,7 +44,7 @@ export function transition(order,action,ctx={}){
       requireIt(o.status===ORDER_STATUS.PAYMENT_PENDING,'Order not awaiting payment');
       {const eventId=ctx.paymentEventId||ctx.squareEventId;
       requireIt(ctx.verifiedServerWebhook===true && typeof eventId==='string' && eventId.length>0,'Verified payment-provider server webhook required');
-      o.payment_verified=true;o.payment_event_id=eventId;if(ctx.squareEventId)o.square_event_id=ctx.squareEventId;o.ready_for_pickup=true;o.status=ORDER_STATUS.PAID_READY;break;}
+      o.payment_verified=true;o.payment_event_id=eventId;o.paid_at=at;if(ctx.squareEventId)o.square_event_id=ctx.squareEventId;o.ready_for_pickup=true;o.status=ORDER_STATUS.PAID_READY;break;}
     case ACTION.RELEASE:
       requireIt(o.status===ORDER_STATUS.PAID_HOLD && o.payment_verified===true,'Payment verification required');
       requireIt(ctx.staffAuthorized===true && ctx.bagVerified===true,'Authorized staff must verify bag release');

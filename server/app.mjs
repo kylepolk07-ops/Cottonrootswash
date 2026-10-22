@@ -327,7 +327,13 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='owner')fail(403,'Owner access required');const id=path.split('/').at(-1),account=state.users.find(a=>a.id===id);if(!account)fail(404,'Account not found');
      if(body.action==='set_active'){if(typeof body.active!=='boolean'||account.id===user.id)fail(400,'That account cannot be changed');account.active=body.active;if(!body.active)revokeSessions(account.id);result={user:publicUser(account)};}
      else if(body.action==='reset_password'){const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');const salt=token();account.salt=salt;account.passwordHash=scryptSync(temporaryPassword,salt,64).toString('hex');account.password_reset_at=new Date().toISOString();revokeSessions(account.id);result={user:publicUser(account)};}
-     else if(body.action==='update_profile'){const displayName=typeof body.displayName==='string'?body.displayName.trim():'';const phone=typeof body.phone==='string'?body.phone.trim():'';const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';if(displayName.length>80||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');account.displayName=displayName;account.phone=phone;account.email=email;result={user:publicUser(account)};}
+     else if(body.action==='update_profile'){
+      if(account.role==='customer'){
+       if(!state.pricingPin)fail(409,'Set the six-digit owner PIN in Pricing first');const pin=typeof body.pin==='string'?body.pin:'';
+       const candidate=scryptSync(pin,state.pricingPin.salt,64);if(!/^\d{6}$/.test(pin)||!timingSafeEqual(candidate,Buffer.from(state.pricingPin.hash,'hex')))fail(403,'Owner PIN did not match');
+      }
+      const displayName=typeof body.displayName==='string'?body.displayName.trim():'';const phone=typeof body.phone==='string'?body.phone.trim():'';const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';if(displayName.length>80||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');account.displayName=displayName;account.phone=phone;account.email=email;account.profile_verified_at=null;result={user:publicUser(account)};
+     }
      else if(body.action==='delete_account'){
       if(account.id===user.id||!['customer','contractor'].includes(account.role))fail(400,'That account cannot be deleted');
       if(state.bags.some(b=>b.customer_id===account.id)||state.orders.some(o=>o.customer_id===account.id||o.assigned_contractor_id===account.id))fail(409,'This account has bag or job history. Pause it instead.');

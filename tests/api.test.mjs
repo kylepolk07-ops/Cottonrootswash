@@ -236,6 +236,9 @@ test('owner pricing changes are protected and new orders snapshot their rates',a
  const first={dropoff:3.25,full_service:4.5,rushPerLb:1.25,extraBag:12,contractor:1.5};
  denied(await customer.request('/api/management/pricing',{method:'POST',body:first}));
  assert.equal((await owner.request('/api/management/pricing',{method:'POST',body:{action:'set_pin',pin:'246810',confirmPin:'246810'}})).status,200);
+ assert.equal((await customer.request('/api/profile',{method:'POST',body:{displayName:'Customer Name',phone:'325-555-0101',email:'customer@example.com'}})).status,200);assert.equal((await customer.request('/api/profile',{method:'POST',body:{action:'verify'}})).status,200);
+ denied(await owner.request('/api/management/accounts/customer',{method:'POST',body:{action:'update_profile',displayName:'Changed Name',phone:'325-555-0102',email:'changed@example.com',pin:'111111'}}));
+ const profileChanged=await owner.request('/api/management/accounts/customer',{method:'POST',body:{action:'update_profile',displayName:'Changed Name',phone:'325-555-0102',email:'changed@example.com',pin:'246810'}});assert.equal(profileChanged.status,200);assert.equal(profileChanged.data.user.profileVerifiedAt,null);
  denied(await owner.request('/api/management/pricing',{method:'POST',body:{...first,pin:'111111'}}));
  const changed=await owner.request('/api/management/pricing',{method:'POST',body:{...first,pin:'246810'}});assert.equal(changed.status,200);assert.deepEqual(changed.data.pricing,first);assert.match(changed.data.effectiveAt,/Z$/);
  denied(await owner.request('/api/management/pricing',{method:'POST',body:{...first,dropoff:3.257,pin:'246810'}}));

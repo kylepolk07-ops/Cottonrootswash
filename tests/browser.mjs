@@ -50,7 +50,7 @@ try{
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');
  for(const [buttonName,headingName] of [['Customers','Customers'],['Contractor applications','Contractor applications & accounts'],['Bag inventory','Bag inventory'],['Money','Money'],['Orders','Orders'],['Late alerts','Late alerts'],['Customer complaints','Customer complaints'],['Pricing','Pricing'],['Pilot tools','Pilot tools']]){
-  await page.getByRole('button',{name:new RegExp(`^${buttonName}`)}).click();await heading(headingName);await click('← Management home');await heading('Management');
+  await page.getByRole('button',{name:new RegExp(`^${buttonName}`)}).click();await heading(headingName);if(buttonName==='Money'){await page.getByLabel('View',{exact:true}).selectOption('last_week');await page.getByText(/^Showing /).waitFor();await page.getByLabel('View',{exact:true}).selectOption('custom');await page.getByLabel('Start date',{exact:true}).waitFor();await page.getByLabel('End date',{exact:true}).waitFor()}await click('← Management home');await heading('Management');
  }
  await page.screenshot({path:resolve(shotDir,'management-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);

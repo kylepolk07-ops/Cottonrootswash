@@ -30,7 +30,7 @@ test('return requires wash completion, bag scan then wall scan; Square cannot be
  assert.equal(o.status,ORDER_STATUS.PAYMENT_PENDING);
  assert.throws(()=>transition(o,ACTION.PAYMENT,{squareEventId:'fake',verifiedServerWebhook:false}));
  o=transition(o,ACTION.PAYMENT,{squareEventId:'evt1',verifiedServerWebhook:true});
- assert.equal(o.status,ORDER_STATUS.PAID_READY);assert.equal(o.ready_for_pickup,true);
+ assert.equal(o.status,ORDER_STATUS.PAID_READY);assert.equal(o.ready_for_pickup,true);assert.ok(o.paid_at);
  assert.throws(()=>transition(o,ACTION.PICKUP,{customerId:'c2',bagVerified:true,bagId:'b1'}));
  assert.throws(()=>transition(o,ACTION.PICKUP,{customerId:'c1',bagVerified:true,bagId:'wrong'}));
  o=transition(o,ACTION.PICKUP,{customerId:'c1',bagVerified:true,bagId:'b1'});

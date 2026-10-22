@@ -10,7 +10,10 @@ let user,
   paymentPreview,
   pricingPreview,
   agreementVersion,
-  managementView = "home";
+  managementView = "home",
+  moneyPeriod="this_week",
+  moneyStart="",
+  moneyEnd="";
 window.addEventListener("pagehide", () => stopCamera?.());
 function node(tag, text, attrs = {}) {
   const e = document.createElement(tag);
@@ -1408,15 +1411,25 @@ function managementBack(parent) {
 function moneyManagement(data) {
   const c = card("💵", "Money", "Staging estimate only. No contractor payout or real money is sent from this screen.");
   managementBack(c);
+  c.append(node("h3","Date range"));
+  const period=select(c,"View",[["this_week","This week"],["last_week","Last week"],["last_30","Last 30 days"],["all","All time"],["custom","Custom dates"]],moneyPeriod);
+  const custom=node("div");c.append(custom);
+  const localDay=date=>{const copy=new Date(date);copy.setHours(0,0,0,0);return copy},today=localDay(new Date());
+  const monday=date=>{const copy=localDay(date),day=copy.getDay();copy.setDate(copy.getDate()-(day===0?6:day-1));return copy};
+  const rangeFor=value=>{if(value==="all")return [null,null];if(value==="custom")return [moneyStart?localDay(`${moneyStart}T12:00:00`):null,moneyEnd?new Date(`${moneyEnd}T23:59:59.999`):null];if(value==="last_30"){const start=localDay(today);start.setDate(start.getDate()-29);return [start,new Date(today.getTime()+86400000-1)]}const start=monday(today);if(value==="last_week")start.setDate(start.getDate()-7);const end=new Date(start);end.setDate(end.getDate()+6);end.setHours(23,59,59,999);return [start,end]};
+  const drawCustom=()=>{custom.replaceChildren();if(period.value!=="custom")return;const start=field(custom,"Start date","date",moneyStart),end=field(custom,"End date","date",moneyEnd);button(custom,"Apply date range",async()=>{if(!start.value||!end.value||start.value>end.value)throw Error("Choose a valid start and end date.");moneyStart=start.value;moneyEnd=end.value;moneyPeriod="custom";await route("management")})};drawCustom();
+  period.addEventListener("change",async()=>{moneyPeriod=period.value;drawCustom();if(moneyPeriod!=="custom")await route("management")});
+  const [rangeStart,rangeEnd]=rangeFor(moneyPeriod),within=value=>{if(!rangeStart&&!rangeEnd)return true;if(!value)return false;const when=new Date(value);return (!rangeStart||when>=rangeStart)&&(!rangeEnd||when<=rangeEnd)};
+  c.append(node("p",rangeStart&&rangeEnd?`Showing ${rangeStart.toLocaleDateString()} through ${rangeEnd.toLocaleDateString()}`:"Showing all recorded dates",{class:"note"}));
   const jobs = (data.orders || []).filter((o) => o.assigned_contractor_id);
-  const completed=jobs.filter(order=>order.returned_at),contractorPay=completed.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),revenue=(data.orders||[]).filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.total||0),0),costs=(data.businessCosts||[]).reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
+  const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+Number(order.total||0),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
   const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Contractor earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
   c.append(node("p","Estimated profit = verified customer payments − contractor earnings on returned work − costs entered below.",{class:"note"}),node("h3","Contractor payouts"));
   const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Contractor","Returned jobs","Pounds","Earned","Ready","Waiting"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
   for(const contractor of contractors){const mine=completed.filter(order=>order.assigned_contractor_id===contractor.id),earned=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),ready=mine.filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),pounds=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0),0),tr=node("tr");for(const value of [contractor.displayName||contractor.username,mine.length,pounds.toFixed(1),`$${earned.toFixed(2)}`,`$${ready.toFixed(2)}`,`$${(earned-ready).toFixed(2)}`])tr.append(node("td",value));body.append(tr)}table.append(body);wrap.append(table);c.append(wrap);
   c.append(node("h3","Enter a business cost"));const description=field(c,"Description","text"),category=select(c,"Category",[["supplies","Supplies"],["rent","Rent"],["utilities","Utilities"],["software","Software"],["marketing","Marketing"],["other","Other"]]),date=field(c,"Date","date",shopDateKey()),amount=field(c,"Amount","number");amount.min="0.01";amount.max="100000";amount.step="0.01";
   button(c,"Add cost",async()=>{await api("/api/management/costs",{action:"add",description:description.value,category:category.value,date:date.value,amount:Number(amount.value)});await route("management");message("Business cost added.")});
-  c.append(node("h3","Recorded costs"));if(!(data.businessCosts||[]).length)c.append(node("p","No business costs entered yet.",{class:"muted"}));for(const cost of data.businessCosts||[]){const row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${cost.description} · $${Number(cost.amount).toFixed(2)}`),node("p",`${cost.category} · ${cost.date}`,{class:"muted"}));button(row,"Delete cost",async()=>{if(!confirm(`Delete ${cost.description}?`))return;await api("/api/management/costs",{action:"delete",id:cost.id});await route("management");message("Business cost deleted.")},true);c.append(row)}
+  c.append(node("h3","Recorded costs"));if(!visibleCosts.length)c.append(node("p","No business costs in this date range.",{class:"muted"}));for(const cost of visibleCosts){const row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${cost.description} · $${Number(cost.amount).toFixed(2)}`),node("p",`${cost.category} · ${cost.date}`,{class:"muted"}));button(row,"Delete cost",async()=>{if(!confirm(`Delete ${cost.description}?`))return;await api("/api/management/costs",{action:"delete",id:cost.id});await route("management");message("Business cost deleted.")},true);c.append(row)}
 }
 async function managementTestTools() {
   const kit = await api("/api/management/test-kit"), c = card("🧪", "Pilot tools", "Synthetic QR and station codes for private testing only.");
@@ -1500,12 +1513,14 @@ function editManagedAccount(account) {
   const name = field(c, "Name", "text", account.displayName || ""),
     phone = field(c, "Phone", "tel", account.phone || ""),
     email = field(c, "Email", "email", account.email || "");
+  const ownerPin=account.role==="customer"?field(c,"Six-digit owner PIN","password"):null;if(ownerPin){ownerPin.inputMode="numeric";ownerPin.maxLength=6;ownerPin.pattern="[0-9]{6}";c.append(node("p","Customer information changes require your owner PIN and clear the customer’s verification until they review it again.",{class:"note"}))}
   button(c, "Save account details", async () => {
     await api("/api/management/accounts/" + encodeURIComponent(account.id), {
       action: "update_profile",
       displayName: name.value,
       phone: phone.value,
       email: email.value,
+      ...(ownerPin?{pin:ownerPin.value}:{}),
     });
     route("management");
   });
