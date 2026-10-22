@@ -27,6 +27,10 @@ Lead `/root` separated contractor approval from account editing. The contractor 
 
 Lead `/root` expanded **Management → Orders** so a booking appears immediately under Awaiting customer drop-off, then moves through At shop/waiting for contractor, In progress, Ready for pickup, and Completed. Contractor custody remains protected: a newly booked order is not offered to contractors until the customer verifies physical shop arrival by scanning the assigned bag and shop station QR.
 
+## 2026-10-22 — login continuity across Render restarts
+
+Lead `/root` moved authenticated session records from process memory into the protected SQLite database on the persistent Render disk. Only a hash of the random session cookie is stored, with its separate CSRF token, account ID, and eight-hour expiry. Sessions now survive safe service restarts and deployments; sign-out, password reset, account pause, expiration, and capacity cleanup still revoke them. Added a restart regression proving the same secure cookie restores the account after restart and becomes invalid immediately after sign-out.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

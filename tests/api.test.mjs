@@ -185,3 +185,12 @@ test('logout revokes session and login throttling rejects credential guessing',a
  let last;for(let i=0;i<21;i++)last=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'unknown',password:'wrong'})});
  assert.equal(last.status,429);
 });
+
+test('secure login session survives a safe server restart',async t=>{
+ const h=await harness(t),customer=await h.client('customer');
+ assert.equal((await customer.request('/api/me')).status,200);
+ await h.restart();
+ const restored=await customer.request('/api/me');assert.equal(restored.status,200);assert.equal(restored.data.user.id,'customer');
+ assert.equal((await customer.request('/api/logout',{method:'POST',body:{}})).status,200);
+ assert.equal((await customer.request('/api/me')).status,401);
+});

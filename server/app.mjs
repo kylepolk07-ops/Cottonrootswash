@@ -35,7 +35,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  try{chmodSync(dataDir,0o700)}catch(error){if(!(remoteOrigin&&dataDir==='/var/data'&&error?.code==='EPERM'))throw error}
  const db=new DatabaseSync(resolve(dataDir,'staging.sqlite'));
  chmodSync(resolve(dataDir,'staging.sqlite'),0o600);
- db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
+ db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (id_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, csrf TEXT NOT NULL, expires INTEGER NOT NULL)');
  let row=db.prepare('SELECT value FROM state WHERE id=1').get();
  let state=row?JSON.parse(row.value):{users:[],bags:[],orders:[],audit:[],keys:{},stationToken:token()};
  state.complaints??=[];
@@ -50,8 +50,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   const bagToken=token();state.bags.push({id:'bag-001',token:bagToken,customer_id:null});
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
  }
- const sessions=new Map(),attempts=new Map();
- const revokeSessions=userId=>{for(const [key,value] of sessions)if(value.userId===userId)sessions.delete(key)};
+ const attempts=new Map();
+ const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
  const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
@@ -136,14 +136,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const trialExpected=scryptSync(stagingPassword||'unavailable','crc-disposable-trial',64);
     const trialMatch=disposable&&Boolean(u)&&['customer','contractor'].includes(u.role)&&timingSafeEqual(trialCandidate,trialExpected);
     if(!storedMatch&&!trialMatch||u?.active===false)fail(401,'Invalid credentials');
-    for(const [key,value] of sessions)if(value.expires<now)sessions.delete(key);
-    if(sessions.size>=1000)fail(429,'Session capacity reached');
-    const sid=token(),csrf=token();sessions.set(hash(sid),{userId:u.id,csrf,expires:now+8*3600000});
+    db.prepare('DELETE FROM sessions WHERE expires<?').run(now);
+    if(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count>=1000)fail(429,'Session capacity reached');
+    const sid=token(),csrf=token();db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);
     headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;
     send(200,{user:publicUser(u),csrf});return;
    }
    const sid=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('crc_session='))?.slice(12);
-   const session=sid&&sessions.get(hash(sid));if(!session||session.expires<Date.now())fail(401,'Sign in required');
+   const session=sid&&db.prepare('SELECT user_id AS userId, csrf, expires FROM sessions WHERE id_hash=?').get(hash(sid));if(!session||session.expires<Date.now()){if(sid)db.prepare('DELETE FROM sessions WHERE id_hash=?').run(hash(sid));fail(401,'Sign in required')}
    const user=state.users.find(u=>u.id===session.userId);if(!user||user.active===false){if(user)revokeSessions(user.id);fail(401,'Sign in required')}
    const agreementRequired=['customer','contractor'].includes(user.role)&&user.agreement_version!==AGREEMENT_VERSION;
    if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
@@ -215,7 +215,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
-   if(path==='/api/logout'){sessions.delete(hash(sid));headers['Set-Cookie']=`crc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${cookieSecurity}`;return send(200,{ok:true})}
+   if(path==='/api/logout'){db.prepare('DELETE FROM sessions WHERE id_hash=?').run(hash(sid));headers['Set-Cookie']=`crc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${cookieSecurity}`;return send(200,{ok:true})}
    const requestKey=req.headers['idempotency-key'];if(typeof requestKey!=='string'||requestKey.length<8||requestKey.length>128)fail(400,'Idempotency-Key required');
    const key=user.id+':'+requestKey,fingerprint=hash(path+JSON.stringify(body));
    if(state.keys[key]){if(state.keys[key].fingerprint!==fingerprint)fail(409,'Key reused with different request');return send(200,state.keys[key].result)}
