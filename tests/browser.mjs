@@ -31,7 +31,7 @@ try{
  await click('New order');await click('Next: choose detergent');await click('Next: review order');await click('Book this order');await heading('Your laundry, step by step');
  await click('Drop off this bag');await scan('Scan the matching bag QR','wrong-token');await click('Next: scan station');await scan('Scan the shop station QR',fixtures.stationToken);await click('Confirm this step');await page.getByRole('status').filter({hasText:'Bag owner and wall QR must be verified'}).waitFor();
  await click('Back: scan bag again');await scan('Scan the matching bag QR',fixtures.bagToken);await click('Next: scan station');await scan('Scan the shop station QR',fixtures.stationToken);await click('Confirm this step');await heading('Your laundry, step by step');
- await page.reload();await click('My laundry');await heading('Your laundry, step by step');assert.equal(await page.getByText('At the shop',{exact:true}).count(),1);
+ await page.reload();await click('Laundry status');await heading('Your laundry, step by step');await page.getByRole('button',{name:'Refresh status',exact:true}).waitFor();assert.equal(await page.getByText('At the shop',{exact:true}).count(),1);
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await page.screenshot({path:resolve(shotDir,'customer-mobile.png'),fullPage:true});
  await click('Sign out');await login('contractor','contractor');await click('Availability');
@@ -43,7 +43,7 @@ try{
  await page.reload();await click('My jobs');await click('Laundry is clean');await click('Confirm this step');await click('Scan bag on return');await scan('Scan the matching bag QR',fixtures.bagToken);await click('Confirm this step');await click('Check in at shop');await scan('Scan the shop station QR',fixtures.stationToken);await click('Confirm this step');await page.getByText('Finished · payment pending',{exact:true}).waitFor();
  await click('My pay');await page.getByText('status: pending',{exact:true}).waitFor();await page.screenshot({path:resolve(shotDir,'contractor-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
- await click('Sign out');await login('customer','customer');await click('My laundry');await page.getByText(/TEST MODE ESTIMATE/).waitFor();await page.getByRole('button',{name:'Pay securely with card or Link',exact:true}).waitFor();assert.equal(await page.getByText(/Final live pricing and fee rules are not approved/).count(),1);
+ await click('Sign out');await login('customer','customer');await click('Laundry status');await page.getByText(/TEST MODE ESTIMATE/).waitFor();await page.getByRole('button',{name:'Pay securely with card or Link',exact:true}).waitFor();assert.equal(await page.getByText(/Final live pricing and fee rules are not approved/).count(),1);
  await page.getByRole('button',{name:'Report a problem',exact:true}).click();await heading('Report a problem');await page.getByLabel('What is this about?').selectOption('late');await page.getByLabel('Tell us what happened').fill('This private test order needs a timing review.');await click('Send to Management');await page.getByText('Your report was sent to Management.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');

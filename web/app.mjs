@@ -303,7 +303,7 @@ async function render() {
       : app === "customer"
       ? [
           ["home", "Home"],
-          ["orders", "My laundry"],
+          ["orders", "Laundry status"],
           ["book", "New order"],
           ["bags", "My bags"],
           ["profile", "Profile"],
@@ -564,6 +564,8 @@ async function orders() {
   if(app==="contractor"&&page!=="offers")contractorReminders(orders);
   const filterBox = node("div", undefined, { class: "filter" });
   main.append(filterBox);
+  const updated=node("p",`Updated ${new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`,{class:"muted"});
+  filterBox.append(updated);
   const filter = select(
     filterBox,
     "Show laundry",
@@ -582,6 +584,9 @@ async function orders() {
             ["complete", "Returned jobs"],
           ],
   );
+  const showing=node("p",undefined,{class:"note"});
+  filterBox.append(showing);
+  button(filterBox,"Refresh status",()=>route(page),true);
   if (app === "contractor") {
     const help = button(
       filterBox,
@@ -592,7 +597,8 @@ async function orders() {
     help.classList.add("guide-link");
   }
   const orderCards = [];
-  filter.addEventListener("change", () => {
+  function applyFilter() {
+    let visibleCount=0;
     for (const [c, o] of orderCards) {
       const key = filter.value;
       c.hidden = !(
@@ -614,8 +620,11 @@ async function orders() {
         (key === "complete" &&
           (app === "customer" ? o.status === "picked_up" : !!o.returned_at))
       );
+      if(!c.hidden)visibleCount++;
     }
-  });
+    showing.textContent=`Showing: ${filter.selectedOptions[0]?.textContent||"All"} · ${visibleCount} order${visibleCount===1?"":"s"}`;
+  }
+  filter.addEventListener("change",applyFilter);
   if (!orders.length)
     card(
       "🌿",
@@ -693,6 +702,7 @@ async function orders() {
         actionWizard(o, "staff_release"),
       );
   }
+  applyFilter();
 }
 function complaintForm(order) {
   reset();
@@ -746,7 +756,7 @@ async function actionWizard(o, action) {
   };
   async function submit() {
     await api(`/api/orders/${encodeURIComponent(o.id)}/actions`, body);
-    await route("orders");
+    if(action==="staff_release"&&["owner","staff"].includes(user.role)){managementView="orders";await route("management")}else await route("orders");
     message(success[action] || "Done. Your next step is shown below.");
   }
   function clear() {
@@ -1352,7 +1362,9 @@ function managementOrderRow(parent,o,data) {
   const customer=(data.users||[]).find(u=>u.id===o.customer_id),contractor=(data.users||[]).find(u=>u.id===o.assigned_contractor_id);
   const row=node("div",undefined,{class:"step"});
   const detail=o.status==="picked_up"?`Completed ${new Date(o.picked_up_at).toLocaleString()}`:o.status==="awaiting_dropoff"?"Booked · customer has not checked it in at the shop":["at_shop","offered"].includes(o.status)?"Checked in · available to approved contractors":statusLabels[o.status]||o.status;
-  row.append(node("div",o.status==="picked_up"?"✓":"🧺",{class:"big"}),node("p",`${o.bag_id||"No bag"} · Customer: ${customer?.displayName||customer?.username||o.customer_id||"Unknown"}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\n${detail}`));parent.append(row);
+  row.append(node("div",o.status==="picked_up"?"✓":"🧺",{class:"big"}),node("p",`${o.bag_id||"No bag"} · Customer: ${customer?.displayName||customer?.username||o.customer_id||"Unknown"}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\n${detail}`));
+  if(o.status==="paid_hold")button(row,"Move paid bag to pickup area",()=>actionWizard(o,"staff_release"));
+  parent.append(row);
 }
 function alertText(alert){
  const minutes=alert.state==="overdue"?alert.minutesLate:alert.minutesUntil,hours=Math.floor(minutes/60),remainder=minutes%60,amount=[hours?`${hours}h`:"",remainder?`${remainder}m`:""].filter(Boolean).join(" ")||"now";
