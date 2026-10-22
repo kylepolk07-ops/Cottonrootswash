@@ -12,6 +12,7 @@ let user,
   agreementVersion,
   managementView = "home",
   managementOrderId = null,
+  moneyEditOrderId = null,
   moneyPeriod="this_week",
   moneyStart="",
   moneyEnd="";
@@ -342,7 +343,7 @@ async function render() {
       nav,
       t,
       () => {
-        if (k === "management") {managementView = "home";managementOrderId=null;}
+        if (k === "management") {managementView = "home";managementOrderId=null;moneyEditOrderId=null;}
         return route(k);
       },
       page !== k,
@@ -1184,14 +1185,14 @@ async function earnings() {
   );
   const totals = node("div", undefined, { class: "stat-grid" });
   main.append(totals);
-  for (const status of ["pending", "approved", "paid"])
+  for (const [status,label] of [["waiting_for_customer_payment","Waiting payment"],["clearing","24-hour clearing"],["ready","Ready for payout"],["paid","Paid"]])
     stat(
       totals,
       `$${earnings
         .filter((e) => e.status === status)
         .reduce((n, e) => n + Number(e.amount || 0), 0)
         .toFixed(2)}`,
-      status === "approved" ? "Approved for payout" : status,
+      label,
     );
   if (!earnings.length)
     card(
@@ -1205,7 +1206,7 @@ async function earnings() {
     if(e.delivery_bonus)c.append(node("p",`Delivery bonus: $${Number(e.delivery_bonus).toFixed(2)} ($0.25 per lb)`,{class:"note"}));
     if(e.rush_bonus)c.append(node("p",`Rush bonus: $${Number(e.rush_bonus).toFixed(2)} ($0.75 per lb)`,{class:"note"}));
     for(const item of e.adjustment_details||[])c.append(node("p",`${item.reason}: ${Number(item.amount)<0?"−":"+"}$${Math.abs(Number(item.amount)).toFixed(2)}`,{class:"muted"}));
-    c.append(node("p",`Total contractor pay: $${Number(e.amount).toFixed(2)}`,{class:"price"}),node("span",e.status,{class:"pill"}));
+    c.append(node("p",`Total contractor pay: $${Number(e.amount).toFixed(2)}`,{class:"price"}),node("span",{waiting_for_customer_payment:"Waiting for customer payment",clearing:"24-hour clearing",ready:"Ready for payout",paid:"Paid"}[e.status]||e.status,{class:"pill"}));
   }
 }
 async function management() {
@@ -1403,6 +1404,7 @@ function managementComplaints(data) {
 function managementBack(parent) {
   button(parent, "← Management home", () => {
     managementView = "home";
+    managementOrderId=null;moneyEditOrderId=null;
     route("management");
   }, true);
 }
@@ -1422,11 +1424,11 @@ function moneyManagement(data) {
   const jobs = (data.orders || []).filter((o) => o.assigned_contractor_id);
   const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+Number(order.total||0),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
   const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Contractor earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
-  c.append(node("p","Estimated profit = verified customer payments − contractor earnings on returned work − costs entered below.",{class:"note"}),node("h3","Contractor payouts"));
-  const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Contractor","Returned jobs","Pounds","Earned","Ready","Waiting"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
-  for(const contractor of contractors){const mine=completed.filter(order=>order.assigned_contractor_id===contractor.id),earned=mine.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),ready=mine.filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),pounds=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0),0),tr=node("tr");for(const value of [contractor.displayName||contractor.username,mine.length,pounds.toFixed(1),`$${earned.toFixed(2)}`,`$${ready.toFixed(2)}`,`$${(earned-ready).toFixed(2)}`])tr.append(node("td",value));body.append(tr)}table.append(body);wrap.append(table);c.append(wrap);
-  c.append(node("h3","Pay adjustments"),node("p","Delivery jobs automatically include $0.25 per pound. Rush jobs automatically include $0.75 per pound. Add mileage reimbursement, another bonus, or a correction below.",{class:"note"}));
-  for(const order of completed){const contractor=contractors.find(person=>person.id===order.assigned_contractor_id),box=node("div",undefined,{class:"bag-card"}),pay=order.contractor_pay||{};box.append(node("strong",`${contractor?.displayName||contractor?.username||"Contractor"} · ${order.id}`),node("p",`Base $${Number(pay.base||0).toFixed(2)}${pay.deliveryBonus?` + delivery $${Number(pay.deliveryBonus).toFixed(2)}`:""}${pay.rushBonus?` + rush $${Number(pay.rushBonus).toFixed(2)}`:""} + adjustments $${Number(pay.adjustments||0).toFixed(2)} = $${Number(pay.total||0).toFixed(2)}`,{class:"muted"}));for(const item of order.contractor_pay_adjustments||[]){const line=node("div",undefined,{class:"step"});line.append(node("p",`${item.reason}: ${Number(item.amount)<0?"−":"+"}$${Math.abs(Number(item.amount)).toFixed(2)}`));button(line,"Remove",async()=>{await api("/api/management/pay-adjustments",{action:"delete",orderId:order.id,adjustmentId:item.id});await route("management");message("Pay adjustment removed.")},true);box.append(line)}const reason=field(box,"Reason (mileage, bonus, or correction)","text"),extra=field(box,"Adjustment amount","number");extra.min="-500";extra.max="500";extra.step="0.01";button(box,"Add pay adjustment",async()=>{await api("/api/management/pay-adjustments",{action:"add",orderId:order.id,reason:reason.value,amount:Number(extra.value)});await route("management");message("Contractor pay adjusted.")});c.append(box)}
+  c.append(node("p","Estimated profit = verified customer payments − contractor earnings on returned work − costs entered below.",{class:"note"}),node("h3","Jobs and contractor pay"),node("p","Payments become ready for payout 24 hours after the customer payment is verified. Bank timing may take longer. Paid jobs are locked.",{class:"note"}));
+  const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Job","Contractor","Completed","Base","Delivery","Rush","Mileage / other","Total","Payout","Edit"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
+  for(const order of completed){const contractor=contractors.find(person=>person.id===order.assigned_contractor_id),pay=order.contractor_pay||{},row=node("tr"),status={waiting_for_customer_payment:"Waiting for customer payment",clearing:order.contractor_payout_eligible_at?`Clears ${new Date(order.contractor_payout_eligible_at).toLocaleString()}`:"Clearing",ready:"Ready for payout",paid:"Paid"}[order.contractor_payout_status]||"Waiting";for(const value of [order.id,contractor?.displayName||contractor?.username||"Contractor",new Date(order.returned_at).toLocaleDateString(),`$${Number(pay.base||0).toFixed(2)}`,`$${Number(pay.deliveryBonus||0).toFixed(2)}`,`$${Number(pay.rushBonus||0).toFixed(2)}`,`$${Number(pay.adjustments||0).toFixed(2)}`,`$${Number(pay.total||0).toFixed(2)}`,status])row.append(node("td",value));const action=node("td");if(order.contractor_payout_status!=="paid")button(action,"Edit",()=>{moneyEditOrderId=order.id;route("management")},true);else action.append(node("span","Locked",{class:"muted"}));row.append(action);body.append(row)}
+  if(!completed.length){const row=node("tr"),empty=node("td","No completed contractor jobs in this date range.");empty.colSpan=10;row.append(empty);body.append(row)}table.append(body);wrap.append(table);c.append(wrap);
+  const editing=completed.find(order=>order.id===moneyEditOrderId);if(editing&&editing.contractor_payout_status!=="paid"){const contractor=contractors.find(person=>person.id===editing.assigned_contractor_id),current=editing.contractor_pay_adjustments?.[0],box=node("div",undefined,{class:"bag-card"});box.append(node("h3",`Edit ${editing.id}`),node("p",contractor?.displayName||contractor?.username||"Contractor",{class:"muted"}));const extra=field(box,"Mileage or other adjustment","number",Number(editing.contractor_pay?.adjustments||0).toFixed(2)),reason=field(box,"Reason","text",current?.reason||"");extra.min="-500";extra.max="500";extra.step="0.01";button(box,"Save job pay",async()=>{await api("/api/management/pay-adjustments",{action:"set",orderId:editing.id,amount:Number(extra.value),reason:reason.value});moneyEditOrderId=null;await route("management");message("Job pay updated.")});button(box,"Cancel",()=>{moneyEditOrderId=null;route("management")},true);c.append(box)}
   c.append(node("h3","Enter a business cost"));const description=field(c,"Description","text"),category=select(c,"Category",[["supplies","Supplies"],["rent","Rent"],["utilities","Utilities"],["software","Software"],["marketing","Marketing"],["other","Other"]]),date=field(c,"Date","date",shopDateKey()),amount=field(c,"Amount","number");amount.min="0.01";amount.max="100000";amount.step="0.01";
   button(c,"Add cost",async()=>{await api("/api/management/costs",{action:"add",description:description.value,category:category.value,date:date.value,amount:Number(amount.value)});await route("management");message("Business cost added.")});
   c.append(node("h3","Recorded costs"));if(!visibleCosts.length)c.append(node("p","No business costs in this date range.",{class:"muted"}));for(const cost of visibleCosts){const row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${cost.description} · $${Number(cost.amount).toFixed(2)}`),node("p",`${cost.category} · ${cost.date}`,{class:"muted"}));button(row,"Delete cost",async()=>{if(!confirm(`Delete ${cost.description}?`))return;await api("/api/management/costs",{action:"delete",id:cost.id});await route("management");message("Business cost deleted.")},true);c.append(row)}

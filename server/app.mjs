@@ -78,6 +78,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const proofDir=resolve(dataDir,'delivery-proofs');mkdirSync(proofDir,{recursive:true,mode:0o700});
  const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
+ const payoutState=o=>{if(o.contractor_payout_status==='paid')return {status:'paid',eligibleAt:o.contractor_paid_at||null};if(!o.payment_verified||!o.paid_at)return {status:'waiting_for_customer_payment',eligibleAt:null};const eligibleAt=new Date(Date.parse(o.paid_at)+24*3600000).toISOString();return {status:Date.now()>=Date.parse(eligibleAt)?'ready':'clearing',eligibleAt}};
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,contractor_pay_adjustments,...safe}=o;return safe};
  // The pilot persists one state document. Serialize requests so an awaited
@@ -218,7 +219,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
-    if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>{const pay=contractorPayBreakdown(o,DEFAULT_PRICING.contractor);return {order_id:o.id,service:o.service,pounds:pay.pounds,rate:pay.rate,base_pay:pay.base,delivery_bonus:pay.deliveryBonus,rush_bonus:pay.rushBonus,adjustments:pay.adjustments,amount:pay.total,status:'pending',adjustment_details:o.contractor_pay_adjustments||[],note:'No payments or payouts connected'}})});
+    if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>{const pay=contractorPayBreakdown(o,DEFAULT_PRICING.contractor),payout=payoutState(o);return {order_id:o.id,service:o.service,pounds:pay.pounds,rate:pay.rate,base_pay:pay.base,delivery_bonus:pay.deliveryBonus,rush_bonus:pay.rushBonus,adjustments:pay.adjustments,amount:pay.total,status:payout.status,payout_eligible_at:payout.eligibleAt,adjustment_details:o.contractor_pay_adjustments||[],note:'No payments or payouts connected'}})});
     if(path==='/api/management/test-kit/bag-qr'){
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      const bagToken=state.bags[0]?.token;if(!bagToken)fail(404,'Synthetic bag unavailable');
@@ -257,7 +258,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      return send(200,{complaints:state.complaints.filter(item=>item.customer_id===user.id)});
     }
     if(path==='/api/notices')return send(200,{notices:state.notices.slice(-10).reverse()});
-    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),contractor_pay_adjustments:order.contractor_pay_adjustments||[],contractor_pay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),businessCosts:state.businessCosts.slice().reverse(),audit:state.audit})}
+    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>{const payout=payoutState(order);return {...publicOrder(order),contractor_pay_adjustments:order.contractor_pay_adjustments||[],contractor_pay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor),contractor_payout_status:payout.status,contractor_payout_eligible_at:payout.eligibleAt,deadline_alert:deadlineAlert(order)}}),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),businessCosts:state.businessCosts.slice().reverse(),audit:state.audit})}
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
@@ -407,7 +408,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     }else if(path==='/api/management/pay-adjustments'){
      if(user.role!=='owner')fail(403,'Owner access required');
      const order=state.orders.find(item=>item.id===body.orderId&&item.assigned_contractor_id&&item.returned_at);if(!order)fail(404,'Completed contractor order not found');order.contractor_pay_adjustments??=[];
-     if(body.action==='add'){
+     if(order.contractor_payout_status==='paid')fail(409,'Paid jobs cannot be edited');
+     if(body.action==='set'){
+      const amount=Number(body.amount),reason=typeof body.reason==='string'?body.reason.trim():'';if(!Number.isFinite(amount)||amount<-500||amount>500||Math.abs(amount*100-Math.round(amount*100))>1e-8||amount!==0&&(reason.length<3||reason.length>120))fail(400,'Enter an adjustment from -$500 to $500 and a short reason');
+      order.contractor_pay_adjustments=amount===0?[]:[{id:token().slice(0,24),amount,reason,created_at:new Date().toISOString(),created_by:user.id}];result={contractorPay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor)};
+     }else if(body.action==='add'){
       const amount=Number(body.amount),reason=typeof body.reason==='string'?body.reason.trim():'';if(!Number.isFinite(amount)||amount===0||amount<-500||amount>500||Math.abs(amount*100-Math.round(amount*100))>1e-8||reason.length<3||reason.length>120)fail(400,'Enter an adjustment from -$500 to $500 and a short reason');
       const adjustment={id:token().slice(0,24),amount,reason,created_at:new Date().toISOString(),created_by:user.id};order.contractor_pay_adjustments.push(adjustment);result={adjustment,contractorPay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor)};
      }else if(body.action==='delete'){

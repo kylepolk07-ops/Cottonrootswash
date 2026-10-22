@@ -123,7 +123,7 @@ try{
  await page.getByText(/trial moves no money/i).waitFor();
  await page.getByRole('button',{name:'Previous guide step',exact:true}).waitFor();
  await page.getByRole('button',{name:'My pay',exact:true}).click();
- for(const label of ['pending','Approved for payout','paid'])await page.getByText(label,{exact:true}).waitFor();
+ for(const label of ['Waiting payment','24-hour clearing','Ready for payout','Paid'])await page.getByText(label,{exact:true}).waitFor();
  await assertMobileBasics();
  assert.deepEqual(errors,[],'browser must not report uncaught page errors');
  console.log('PASS product experience: customer dashboard, visual service choices, three-step story and custody timeline; contractor Today, separate Offers/My jobs, eight-step guide and pay summaries; anchored navigation, accessible labels, 44px touch targets, and no mobile overflow.');
