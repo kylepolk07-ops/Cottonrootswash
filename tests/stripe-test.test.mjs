@@ -13,6 +13,7 @@ test('Stripe configuration is explicit test mode and rejects live or partial cre
  assert.deepEqual(stripeTestConfig(env,origin),config);
  for(const env of [{CRC_PAYMENT_PROVIDER:'stripe'},{CRC_PAYMENT_PROVIDER:'stripe_test',STRIPE_SECRET_KEY:'sk_live_1234567890abcdef',STRIPE_WEBHOOK_SECRET:webhookSecret},{CRC_PAYMENT_PROVIDER:'stripe_test',STRIPE_SECRET_KEY:secretKey,STRIPE_WEBHOOK_SECRET:'short'}])assert.throws(()=>stripeTestConfig(env,origin));
  assert.equal(stripeTestConfig({...env,STRIPE_SECRET_KEY:'rk_test_1234567890abcdef'},origin).secretKey,'rk_test_1234567890abcdef');
+ assert.equal(stripeTestConfig({...env,STRIPE_SECRET_KEY:'  rk_test_new-format.value  '},origin).secretKey,'rk_test_new-format.value');
 });
 
 test('Stripe test fee estimate is explicit and grossed up without altering the trusted laundry subtotal',()=>{

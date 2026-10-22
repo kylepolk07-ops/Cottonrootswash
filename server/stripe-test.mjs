@@ -8,11 +8,12 @@ export function stripeTestConfig(env=process.env,origin){
  if(!env.CRC_PAYMENT_PROVIDER)return null;
  if(env.CRC_PAYMENT_PROVIDER!=='stripe_test')throw Error('Only Stripe test mode is supported');
  if(typeof origin!=='string'||!origin.startsWith('https://'))throw Error('Stripe test mode requires the exact HTTPS app origin');
- if(!/^(?:sk|rk)_test_[A-Za-z0-9_]{16,}$/.test(env.STRIPE_SECRET_KEY||''))throw Error('A Stripe test secret or restricted key is required');
+ const secretKey=String(env.STRIPE_SECRET_KEY||'').trim();
+ if(!/^(?:sk|rk)_test_\S{8,}$/.test(secretKey))throw Error('A Stripe test secret or restricted key is required');
  if(!/^whsec_[A-Za-z0-9_]{16,}$/.test(env.STRIPE_WEBHOOK_SECRET||''))throw Error('A Stripe test webhook signing secret is required');
  const feeBps=Number(env.CRC_STRIPE_TEST_FEE_BPS),feeFixedCents=Number(env.CRC_STRIPE_TEST_FEE_FIXED_CENTS);
  if(!Number.isInteger(feeBps)||feeBps<0||feeBps>1000||!Number.isInteger(feeFixedCents)||feeFixedCents<0||feeFixedCents>500)throw Error('Explicit Stripe test fee estimate required');
- return {provider:'stripe',mode:'test',origin,secretKey:env.STRIPE_SECRET_KEY,webhookSecret:env.STRIPE_WEBHOOK_SECRET,feeBps,feeFixedCents};
+ return {provider:'stripe',mode:'test',origin,secretKey,webhookSecret:env.STRIPE_WEBHOOK_SECRET,feeBps,feeFixedCents};
 }
 
 export function estimateStripeTestCharge(baseAmountCents,{feeBps,feeFixedCents}={}){
@@ -37,7 +38,7 @@ function trustedCheckout({orderId,customerId,amountCents,currency='USD'}){
 }
 
 export async function createStripeTestCheckout({config,orderId,customerId,amountCents,estimatedFeeCents=0,currency='USD',idempotencyKey,fetchImpl=fetch}){
- if(config?.provider!=='stripe'||config.mode!=='test'||!/^(?:sk|rk)_test_/.test(config.secretKey))throw Error('Stripe test configuration required');
+ if(config?.provider!=='stripe'||config.mode!=='test'||!/^(?:sk|rk)_test_\S{8,}$/.test(config.secretKey))throw Error('Stripe test configuration required');
  const trusted=trustedCheckout({orderId,customerId,amountCents,currency});
  if(typeof idempotencyKey!=='string'||idempotencyKey.length<8||idempotencyKey.length>128)throw Error('Idempotency key required');
  if(!Number.isSafeInteger(estimatedFeeCents)||estimatedFeeCents<0||estimatedFeeCents>=trusted.amountCents)throw Error('Valid test payment cost estimate required');
