@@ -97,7 +97,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const url=new URL(req.url,'http://localhost'),path=url.pathname;
    if(!path.startsWith('/api/')){
     if(req.method!=='GET')fail(405,'Method not allowed');
-    const files={'/':'apps/customer/index.html','/customer':'apps/customer/index.html','/customer/':'apps/customer/index.html','/contractor':'apps/contractor/index.html','/contractor/':'apps/contractor/index.html','/web/calendar.mjs':'shared/calendar.mjs'};
+    const files={'/':'apps/customer/index.html','/customer':'apps/customer/index.html','/customer/':'apps/customer/index.html','/contractor':'apps/contractor/index.html','/contractor/':'apps/contractor/index.html','/web/calendar.mjs':'shared/calendar.mjs','/web/jsQR.js':'node_modules/jsqr/dist/jsQR.js'};
     let file=files[path];
     if(!file&&/^\/web\/[a-zA-Z0-9_.-]+$/.test(path))file=path.slice(1);
     if(!file||!existsSync(resolve(root,file)))fail(404,'Not found');
