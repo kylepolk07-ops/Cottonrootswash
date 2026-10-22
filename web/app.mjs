@@ -1406,6 +1406,26 @@ function editManagedAccount(account) {
     },
     true,
   );
+  if (account.id !== user.id)
+    button(
+      c,
+      "Delete unused account",
+      async () => {
+        if (
+          !confirm(
+            `Delete ${account.username}? This works only when the account has no bag or job history.`,
+          )
+        )
+          return;
+        await api(
+          "/api/management/accounts/" + encodeURIComponent(account.id),
+          { action: "delete_account" },
+        );
+        await route("management");
+        message("Account deleted.");
+      },
+      true,
+    );
   button(c, "Back", () => route("management"), true);
 }
 

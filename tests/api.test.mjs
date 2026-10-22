@@ -93,6 +93,11 @@ test('management bag labels, exchanges and account controls fail safely',async t
  assert.equal((await other.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,409,'retired bag QR cannot be reclaimed');
  assert.equal((await owner.request('/api/management/accounts/customer2',{method:'POST',body:{action:'set_active',active:false}})).status,200);
  assert.equal((await other.request('/api/me')).status,401,'pausing an account revokes its active session');
+ const unusedPassword='unused-private-password';
+ const unused=await owner.request('/api/management/accounts',{method:'POST',body:{role:'customer',username:'unused-test',temporaryPassword:unusedPassword}});assert.equal(unused.status,200);
+ assert.equal((await owner.request(`/api/management/accounts/${unused.data.user.id}`,{method:'POST',body:{action:'delete_account'}})).status,200);
+ const deletedLogin=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'unused-test',password:unusedPassword})});assert.equal(deletedLogin.status,401);
+ assert.equal((await owner.request('/api/management/accounts/customer',{method:'POST',body:{action:'delete_account'}})).status,409,'account history must be preserved');
 });
 
 test('role dashboards summarize only authorized product data',async t=>{
