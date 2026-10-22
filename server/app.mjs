@@ -179,6 +179,12 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      headers['Content-Type']='image/svg+xml; charset=utf-8';headers['Content-Disposition']='inline; filename="cotton-roots-test-bag.svg"';
      res.writeHead(200,headers);res.end(svg);return;
     }
+    if(path==='/api/management/test-kit/station-qr'){
+     if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
+     const svg=await QRCode.toString(state.stationToken,{type:'svg',errorCorrectionLevel:'M',margin:2,width:360});
+     headers['Content-Type']='image/svg+xml; charset=utf-8';headers['Content-Disposition']='inline; filename="cotton-roots-test-station.svg"';
+     res.writeHead(200,headers);res.end(svg);return;
+    }
     if(path==='/api/management/test-kit'){
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      return send(200,{synthetic:true,bagToken:state.bags[0]?.token,stationToken:state.stationToken});

@@ -48,3 +48,16 @@ test('synthetic bag QR is exact-token, owner-only and still behind private acces
  assert.equal(qr.raw.toString(),expected,'QR must encode exactly the existing synthetic bag token');
  for(const value of [...h.fixtures.accounts.map(account=>account.password),h.fixtures.stationToken])assert.ok(!qr.raw.includes(value),'QR response included unrelated fixture data');
 });
+
+test('synthetic station QR is exact-token, owner-only and still behind private access',async t=>{
+ const h=await harness(t),path='/api/management/test-kit/station-qr';
+ assert.equal((await h.request(path,{authorization:''})).status,401);
+ assert.equal((await h.request(path)).status,401);
+ for(const role of ['customer','contractor'])assert.equal((await h.request(path,{cookie:await h.login(role)})).status,403);
+ const qr=await h.request(path,{cookie:await h.login('owner')});
+ assert.equal(qr.status,200);assert.match(qr.headers['content-type'],/^image\/svg\+xml/);
+ assert.equal(qr.headers['cache-control'],'no-store');
+ const expected=await QRCode.toString(h.fixtures.stationToken,{type:'svg',errorCorrectionLevel:'M',margin:2,width:360});
+ assert.equal(qr.raw.toString(),expected,'QR must encode exactly the existing synthetic station token');
+ assert.ok(!qr.raw.includes(h.fixtures.bagToken),'station QR must not include the bag token');
+});

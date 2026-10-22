@@ -5,6 +5,10 @@ All contributions and sub-agent activity must be reported here before integratio
 
 Lead `/root` added a device-local Customer/Contractor preference. After the first choice, opening the main URL routes that browser directly to the selected app; a visible **Change account type** link clears the preference and returns to the chooser. This preference grants no access and does not replace authentication. Existing secure sessions now have explicit browser coverage proving that a page reload restores the signed-in account. Face ID/passkeys remain unimplemented pending a dedicated credential-enrollment and recovery design. The reported logo sizing issue disappeared after reopening, so no image-size change was made. Validation: syntax checks passed, all 48 server/security tests passed, and the mobile Chromium product workflow passed with the new chooser, reset, and session-reload assertions.
 
+## 2026-10-22 — printable shop drop-off QR
+
+Lead `/root` added the missing synthetic station QR to **Management → Pilot tools**, clearly separated from the sample bag QR. The image encodes only the existing private station token, is owner-only, disables caching, and remains behind staging authentication. Added an adversarial test covering outer-gate denial, account authentication, customer/contractor denial, exact station-token encoding, and separation from the bag token. This is private pilot material; no production station or public launch was activated.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

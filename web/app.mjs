@@ -1305,7 +1305,13 @@ function moneyManagement(data) {
 async function managementTestTools() {
   const kit = await api("/api/management/test-kit"), c = card("🧪", "Pilot tools", "Synthetic QR and station codes for private testing only.");
   managementBack(c);
-  c.append(node("img", undefined, { src: "/api/management/test-kit/bag-qr", alt: "Synthetic test bag QR code", class: "test-bag-qr" }));
+  c.append(
+    node("h3", "Shop drop-off QR"),
+    node("p", "Post this QR at the drop-off station. Customers scan it after scanning their bag.", { class: "note" }),
+    node("img", undefined, { src: "/api/management/test-kit/station-qr", alt: "Shop drop-off station QR code", class: "test-bag-qr" }),
+    node("h3", "Sample bag QR"),
+    node("img", undefined, { src: "/api/management/test-kit/bag-qr", alt: "Synthetic test bag QR code", class: "test-bag-qr" }),
+  );
   for (const [label, value] of [["Sample bag code", kit.bagToken], ["Sample station code", kit.stationToken]]) { const input = field(c, label, "text", value); input.readOnly = true; input.addEventListener("focus", () => input.select()); }
 }
 function managementTables(data) {
