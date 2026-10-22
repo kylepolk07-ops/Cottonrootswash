@@ -1,6 +1,10 @@
 # Development work log
 All contributions and sub-agent activity must be reported here before integration or deployment.
 
+## 2026-10-22 — remembered account type and session reopening
+
+Lead `/root` added a device-local Customer/Contractor preference. After the first choice, opening the main URL routes that browser directly to the selected app; a visible **Change account type** link clears the preference and returns to the chooser. This preference grants no access and does not replace authentication. Existing secure sessions now have explicit browser coverage proving that a page reload restores the signed-in account. Face ID/passkeys remain unimplemented pending a dedicated credential-enrollment and recovery design. The reported logo sizing issue disappeared after reopening, so no image-size change was made. Validation: syntax checks passed, all 48 server/security tests passed, and the mobile Chromium product workflow passed with the new chooser, reset, and session-reload assertions.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

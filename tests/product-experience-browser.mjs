@@ -65,8 +65,17 @@ try{
  await page.getByRole('link',{name:'Continue as Customer',exact:true}).waitFor();
  await page.getByRole('link',{name:'Continue as Contractor',exact:true}).waitFor();
  await assertMobileBasics();
+ await page.getByRole('link',{name:'Continue as Customer',exact:true}).click();
+ await page.waitForURL(`${base}/customer`);
+ await page.goto(base+'/');
+ await page.waitForURL(`${base}/customer`);
+ await page.goto(`${base}/?choose=1`);
+ await page.getByRole('heading',{name:'How will you use Cotton Roots?',exact:true}).waitFor();
  await login('customer','customer');
  await page.getByRole('heading',{name:'A little less laundry.',exact:true}).waitFor();
+ await page.reload();
+ await page.getByRole('heading',{name:'A little less laundry.',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Sign out',exact:true}).waitFor();
  await page.getByRole('button',{name:/Get your bag/}).waitFor();
  await page.getByRole('button',{name:/Book laundry/}).waitFor();
  await page.getByRole('heading',{name:'Easy as one, two, three.',exact:true}).waitFor();
