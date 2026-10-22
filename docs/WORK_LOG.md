@@ -19,6 +19,10 @@ Contractor Home and My Jobs now show in-app deadline reminders beginning six hou
 
 Lead `/root` removed the visible QR-token typing fields from bag and shop-station custody steps. Entering a scan step now immediately requests the rear-facing phone camera, shows a captured confirmation, stops the camera after capture, and provides a camera-permission retry when access is blocked. The underlying token remains hidden and is still validated by the authenticated server against the exact bag owner and station. Browser automation injects synthetic tokens only into hidden scan controls and asserts that no visible token field exists; this does not create a user-facing manual entry route.
 
+## 2026-10-22 — simplified contractor approval
+
+Lead `/root` separated contractor approval from account editing. The contractor table now shows Name, Phone, Approval, Bag, and Account explicitly. **Review for approval** opens a read-only review screen, so Management does not have to edit the contractor's name or phone. Approval still requires the owner to confirm the phone conversation and in-person shop meeting. Password resets, contact corrections, pause, and deletion remain under the separately labeled **Account options** control.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

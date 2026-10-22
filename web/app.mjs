@@ -1542,7 +1542,7 @@ function accountTable(data, role) {
     table = node("table"),
     head = node("thead"),
     row = node("tr");
-  for (const label of ["Account", "Contact", "Status", "Bag", "Options"])
+  for (const label of ["Account", "Name", "Phone", "Approval", "Bag", "Options"])
     row.append(node("th", label));
   head.append(row);
   table.append(head);
@@ -1554,9 +1554,8 @@ function accountTable(data, role) {
       );
     for (const value of [
       account.username,
-      [account.displayName, account.phone, account.email]
-        .filter(Boolean)
-        .join(" · ") || "—",
+      account.displayName || "Not added yet",
+      account.phone || "Not added yet",
       account.active === false
         ? "Paused"
         : role === "customer"
@@ -1568,15 +1567,25 @@ function accountTable(data, role) {
     ])
       tr.append(node("td", value));
     const actions = node("td");
-    button(actions, "Edit", () => editManagedAccount(account), true);
+    button(actions, "Account options", () => editManagedAccount(account), true);
     if (role === "contractor" && !account.approved)
-      button(actions, "Review", () => editManagedAccount(account), true);
+      button(actions, "Review for approval", () => reviewContractor(account));
     tr.append(actions);
     body.append(tr);
   }
   table.append(body);
   wrap.append(table);
   c.append(wrap);
+}
+function reviewContractor(account) {
+  main.replaceChildren();
+  const c=card("🧺","Contractor approval","Review the information they entered. You do not need to edit it before deciding.");
+  const details=node("dl");
+  for(const [label,value] of [["Name",account.displayName||"Not provided"],["Phone",account.phone||"Not provided"],["Email",account.email||"Not provided"],["Username",account.username]])details.append(node("dt",label),node("dd",value));
+  c.append(details,node("p","Approve only after speaking with this contractor by phone and meeting them in person at the shop.",{class:"note"}));
+  const phoneConfirmed=check(c,"I spoke with this contractor by phone."),inPersonConfirmed=check(c,"I met this contractor in person at the shop.");
+  button(c,"Approve contractor",async()=>{if(!phoneConfirmed.checked||!inPersonConfirmed.checked)throw Error("Complete both contractor review steps first.");await api("/api/management/approve",{userId:account.id,phoneConfirmed:true,inPersonConfirmed:true});managementView="contractors";await route("management");message("Contractor approved.");});
+  button(c,"Not yet — go back",()=>{managementView="contractors";route("management")},true);
 }
 function bagInventory(data) {
   const c = card(
