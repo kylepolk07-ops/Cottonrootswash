@@ -19,8 +19,12 @@ export function runtimeConfig(env=process.env){
  const u=new URL(remoteOrigin);
  if(u.origin!==remoteOrigin||u.protocol!=='https:'||u.username||u.password)throw Error('Exact HTTPS staging origin required');
  const disposable=provider==='render'&&!renderPersistent;
- const validStagingPassword=disposable?/^\d{6}$/.test(env.CRC_STAGING_PASSWORD||'')||(env.CRC_STAGING_PASSWORD||'').length>=24:(env.CRC_STAGING_PASSWORD||'').length>=24;
- if(!env.CRC_STAGING_USER||env.CRC_STAGING_USER.includes(':')||!validStagingPassword)throw Error(disposable?'Set a six-digit private preview PIN':'Set private staging credentials; password minimum 24 characters');
+ const accountLoginOnly=env.CRC_ACCOUNT_LOGIN_ONLY==='1';
+ if(accountLoginOnly&&disposable)throw Error('Account-login-only mode requires persistent storage');
+ if(!accountLoginOnly){
+  const validStagingPassword=disposable?/^\d{6}$/.test(env.CRC_STAGING_PASSWORD||'')||(env.CRC_STAGING_PASSWORD||'').length>=24:(env.CRC_STAGING_PASSWORD||'').length>=24;
+  if(!env.CRC_STAGING_USER||env.CRC_STAGING_USER.includes(':')||!validStagingPassword)throw Error(disposable?'Set a six-digit private preview PIN':'Set private staging credentials; password minimum 24 characters');
+ }
  const fixturePasswords={};
  if(provider==='render'){
   for(const [user,key] of [['customer','CRC_CUSTOMER_PASSWORD'],['contractor','CRC_CONTRACTOR_PASSWORD'],['owner','CRC_OWNER_PASSWORD']]){
@@ -30,5 +34,5 @@ export function runtimeConfig(env=process.env){
  }
  const payment=stripeTestConfig(env,remoteOrigin);
  if(env.CRC_BOX_LOCK_CODE!==undefined&&!/^\d{4}$/.test(env.CRC_BOX_LOCK_CODE))throw Error('Box lock code must be exactly four digits');
- return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,fixturePasswords,disposable,payment,boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
+ return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,privateGate:!accountLoginOnly,fixturePasswords,disposable,payment,boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
 }

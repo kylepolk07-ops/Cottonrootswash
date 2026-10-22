@@ -54,3 +54,12 @@ test('independent remote review: forwarded spoofing cannot bypass host; HTTPS an
  const logout=await request('/api/logout',{method:'POST',headers:{authorization,origin:remoteOrigin,cookie:cookie.split(';')[0],'x-csrf-token':session.csrf},body:{}});
  assert.equal(logout.status,200);assert.match(logout.headers['set-cookie'][0],/; Secure/);assert.match(logout.headers['set-cookie'][0],/Max-Age=0/);
 });
+
+test('account-login-only staging exposes login pages but protects every API',async t=>{
+ const dataDir=await mkdtemp(join(tmpdir(),'cotton-login-only-'));
+ const app=await createApp({dataDir,fixtures:true,remoteOrigin,privateGate:false});
+ await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
+ t.after(async()=>{await new Promise(r=>app.server.close(r));app.close();await rm(dataDir,{recursive:true,force:true})});
+ const request=path=>new Promise((resolve,reject)=>{const req=http.request({hostname:'127.0.0.1',port:app.server.address().port,path,headers:{host:'private-staging.example','x-forwarded-proto':'https'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject);req.end()});
+ assert.equal(await request('/'),200);assert.equal(await request('/customer'),200);assert.equal(await request('/contractor'),200);assert.equal(await request('/api/orders'),401);assert.equal(await request('/api/management'),401);
+});

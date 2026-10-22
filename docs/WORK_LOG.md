@@ -185,3 +185,5 @@ The root app now opens with an illustrated Customer-or-Contractor chooser instea
 The physical bag tag now states that its unique QR is used to register the bag and to check it in and out, matching the custody workflow.
 
 API requests now retry one time with the same idempotency key when Render returns a temporary 502, 503, or 504 HTML response during a service restart. If the restart continues, the app gives a specific wait-and-retry message instead of the vague “service did not respond” error. This protects first-login agreement acceptance and other safe idempotent actions during deployment transitions.
+
+At the owner's request, persistent Render staging now uses individual account login only. The extra shared private access-code screen is disabled through `CRC_ACCOUNT_LOGIN_ONLY=1`; the Customer/Contractor chooser and login forms are directly reachable, while every application API and Management resource still requires an authenticated role session. Account-login-only mode is rejected on disposable Render storage.

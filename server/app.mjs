@@ -17,9 +17,9 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const AGREEMENT_VERSION='pilot-2026-10-22-v1';
 const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','pilot_data'],contractor:['platform_role','independent_business','pilot_data']};
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
- if(remoteOrigin){
+ if(remoteOrigin&&privateGate){
   const url=new URL(remoteOrigin);
   if(url.protocol!=='https:'||url.origin!==remoteOrigin||url.username||url.password)throw Error('An exact HTTPS remote origin is required');
   const validStagingPassword=typeof stagingPassword==='string'&&(disposable?/^\d{6}$/.test(stagingPassword)||stagingPassword.length>=24:stagingPassword.length>=24);
@@ -28,7 +28,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  for(const [username,password] of Object.entries(fixturePasswords)){
   if(!['customer','contractor','owner'].includes(username)||typeof password!=='string'||password.length<24||password.length>256)throw Error('Invalid synthetic fixture password configuration');
  }
- const privateAccess=remoteOrigin?createPrivateAccess({origin:remoteOrigin,username:stagingUser,password:stagingPassword}):null;
+ const privateAccess=remoteOrigin&&privateGate?createPrivateAccess({origin:remoteOrigin,username:stagingUser,password:stagingPassword}):null;
  const cookieSecurity=remoteOrigin?'; Secure':'';
  mkdirSync(dataDir,{recursive:true,mode:0o700});
  try{chmodSync(dataDir,0o700)}catch(error){if(!(remoteOrigin&&dataDir==='/var/data'&&error?.code==='EPERM'))throw error}
@@ -99,7 +99,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      headers['Content-Type']='text/html; charset=utf-8';headers['Cache-Control']='no-store';headers['Referrer-Policy']='no-referrer';
      res.writeHead(200,headers);res.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotton Roots app QR</title><style>body{margin:0;background:#f8f0dc;color:#173f32;font:18px system-ui;text-align:center}main{max-width:520px;margin:auto;padding:32px 20px}img{display:block;width:min(82vw,420px);height:auto;margin:24px auto;background:white;padding:12px;border-radius:20px}p{line-height:1.5}a{color:#173f32;font-weight:700}</style></head><body><main><h1>Cotton Roots &amp; Co.</h1><p>Scan with your phone camera to open the private test app.</p><img src="/trial-qr.png" alt="QR code for the private Cotton Roots test app"><p>The QR contains only the website address. You will still need your private access code.</p><p><a href="/access">Open the app on this device</a></p></main></body></html>');return;
     }
-    if(await privateAccess(req,res,headers))return;
+    if(privateAccess&&await privateAccess(req,res,headers))return;
    }else if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
    const url=new URL(req.url,'http://localhost'),path=url.pathname;
    if(!path.startsWith('/api/')){

@@ -39,6 +39,12 @@ test('Render accepts only the documented protected persistent-disk configuration
  assert.throws(()=>runtimeConfig({...persistent,RENDER_DISK_MOUNT_PATH:'/tmp/data'}));
 });
 
+test('persistent Render may use individual account login without an outer access code',()=>{
+ const env={...environment(),CRC_DATA_DIR:'/var/data',RENDER_DISK_MOUNT_PATH:'/var/data',CRC_ACCOUNT_LOGIN_ONLY:'1'};delete env.CRC_EPHEMERAL_TEST;delete env.CRC_STAGING_USER;delete env.CRC_STAGING_PASSWORD;
+ const c=runtimeConfig(env);assert.equal(c.app.privateGate,false);assert.equal(c.app.dataDir,'/var/data');
+ assert.throws(()=>runtimeConfig({...environment(),CRC_ACCOUNT_LOGIN_ONLY:'1'}),'disposable storage must not expose reusable accounts');
+});
+
 async function harness(t){
  const env=environment(),config=runtimeConfig(env),dir=await mkdtemp(join(tmpdir(),'cotton-render-review-'));
  let app;

@@ -21,7 +21,7 @@ Railway deployment configuration and a password gate are now prepared. See `docs
 
 ## Private phone pilot
 
-The owner upgraded `https://cotton-roots-private-trial.onrender.com` and attached a persistent disk at `/var/data`. The checked-in `render.yaml` now matches that single-instance Starter pilot. Persistent mode requires a private gate password of at least 24 characters; each Customer, Contractor, and owner also has a separate login. See `docs/RENDER_PERSISTENT_PILOT.md`. The database persists on Render's disk, but there is no off-host backup yet, so use synthetic pilot records only.
+The owner upgraded `https://cotton-roots-private-trial.onrender.com` and attached a persistent disk at `/var/data`. The checked-in `render.yaml` matches that single-instance Starter pilot. The role chooser and login pages are reachable directly; every Customer, Contractor, and Management action requires its individual username/password session. See `docs/RENDER_PERSISTENT_PILOT.md`. The database persists on Render's disk, but there is no off-host backup yet, so use synthetic pilot records only.
 
 A noninteractive phone-readable PDF of actual tested screens is available in the task artifacts. Recreate with the scripts in `docs/PHONE_WALKTHROUGH_REPORT.md`. It is a visual walkthrough, not a live app.
 

@@ -16,10 +16,8 @@ services:
         value: render
       - key: CRC_DATA_DIR
         value: /var/data
-      - key: CRC_STAGING_USER
-        value: trial
-      - key: CRC_STAGING_PASSWORD
-        generateValue: true
+      - key: CRC_ACCOUNT_LOGIN_ONLY
+        value: "1"
       - key: CRC_CUSTOMER_PASSWORD
         generateValue: true
       - key: CRC_CONTRACTOR_PASSWORD
