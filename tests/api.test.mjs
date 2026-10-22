@@ -142,6 +142,22 @@ test('role dashboards summarize only authorized product data',async t=>{
  assert.equal(management.role,'management');assert.equal(management.openOrders,1);
 });
 
+test('pickup and return orders protect addresses and include distance pricing',async t=>{
+ const h=await harness(t),customer=await h.client('customer'),contractor=await h.client('contractor');
+ assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
+ const booked=await customer.request('/api/orders',{method:'POST',body:{service:'full_service',detergent:'standard',rush_requested:false,pickupAddress:'100 Test Street, Sweetwater, TX',returnAddress:'100 Test Street, Sweetwater, TX',distanceMiles:8}});assert.equal(booked.status,200);assert.equal(booked.data.order.status,'offered');assert.equal(booked.data.order.delivery_fee,3);assert.ok(booked.data.order.due_at);
+ let offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===booked.data.order.id);assert.equal(offer.pickup_address,undefined);assert.equal(offer.delivery_miles,8);
+ assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
+ assert.equal((await action(contractor,offer.id,'accept_job',{deadlineAcknowledged:true})).status,200);
+ offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===offer.id);assert.equal(offer.pickup_address,'100 Test Street, Sweetwater, TX');
+ assert.equal((await action(contractor,offer.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1})).status,200);
+ assert.equal((await action(contractor,offer.id,'wall_checkout',{stationToken:h.fixtures.stationToken})).status,409,'delivery pickup requires the bag, not the shop station');
+ const picked=await action(contractor,offer.id,'wall_checkout',{bagToken:h.fixtures.bagToken});assert.equal(picked.status,200);assert.equal(picked.data.order.total,28.5);
+ assert.equal((await action(contractor,offer.id,'wash_complete')).status,200);
+ const delivered=await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken});assert.equal(delivered.status,200);assert.equal(delivered.data.order.status,'payment_pending');assert.ok(delivered.data.order.delivered_at);
+ assert.equal((await action(contractor,offer.id,'wall_checkin',{stationToken:h.fixtures.stationToken})).status,409);
+});
+
 test('customer complaints are private, persistent and managed by staff',async t=>{
  const h=await harness(t),customer=await h.client('customer'),other=await h.client('customer2'),contractor=await h.client('contractor'),owner=await h.client('owner');
  const order=await setupOrder(h,customer);

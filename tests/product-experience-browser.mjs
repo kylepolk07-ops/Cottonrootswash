@@ -92,7 +92,8 @@ try{
  await page.getByRole('button',{name:/Drop off/}).waitFor();
  const pickupChoice=page.getByRole('button',{name:/Pickup & return/});
  await pickupChoice.waitFor();
- assert.equal(await pickupChoice.isDisabled(),true,'unconnected pickup routing must remain visibly unavailable');
+ assert.equal(await pickupChoice.isDisabled(),false,'pickup and return must be selectable');
+ await page.getByText(/first 5 miles are free/i).waitFor();
  await assertMobileBasics();
 
  await post('/api/claim',{bagToken:fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true});

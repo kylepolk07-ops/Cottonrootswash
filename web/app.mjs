@@ -459,8 +459,9 @@ const statusLabels = {
   cancelled: "Cancelled",
 };
 function summary(c, o) {
+  const deliveryStatus=o.service==="full_service"?{offered:"Waiting for contractor",accepted:"Pickup accepted",washing:"Picked up · being washed",payment_pending:"Delivered · payment pending",paid_ready:"Paid · confirm delivery",picked_up:"Delivery confirmed"}[o.status]:null;
   c.append(
-    node("span", statusLabels[o.status] || "Status update", { class: "pill" }),
+    node("span", deliveryStatus||statusLabels[o.status] || "Status update", { class: "pill" }),
   );
   const dl = node("dl");
   for (const [k, v] of [
@@ -490,6 +491,10 @@ function summary(c, o) {
         { class: "muted" },
       ),
     );
+  if(o.service==="full_service"){
+    c.append(node("p",`Delivery: ${Number(o.delivery_miles||0).toFixed(1)} miles from shop · $${Number(o.delivery_fee||0).toFixed(2)} distance fee`,{class:"note"}));
+    if(o.pickup_address)c.append(node("p",`Pickup: ${o.pickup_address}\nReturn: ${o.return_address}`,{class:"muted"}));
+  }
   if (o.rush_requested)
     c.append(
       node(
@@ -652,10 +657,11 @@ async function orders() {
     if (app === "customer") {
       if (o.status === "awaiting_dropoff")
         button(c, "Drop off this bag", () => actionWizard(o, "drop_off"));
+      if(o.service==="full_service"&&o.status==="offered")c.append(node("p","Your delivery request is available to approved contractors. We will update this screen when one accepts it.",{class:"note"}));
       if (o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup)
-        c.append(node("p","Your laundry is paid and ready. Pick it up at the shop, then scan the QR on your bag to complete pickup.",{class:"note"}));
+        c.append(node("p",o.service==="full_service"?"Your delivered laundry is paid. Scan the QR on the bag to confirm that you received the correct order.":"Your laundry is paid and ready. Pick it up at the shop, then scan the QR on your bag to complete pickup.",{class:"note"}));
       if (o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup)
-        button(c, "Scan bag and collect", () => actionWizard(o, "customer_pickup"));
+        button(c, o.service==="full_service"?"Scan bag and confirm delivery":"Scan bag and collect", () => actionWizard(o, "customer_pickup"));
       if (o.status === "picked_up" && !o.rating)
         button(c, "Leave a rating", () => actionWizard(o, "rate"));
       if (
@@ -680,7 +686,7 @@ async function orders() {
       if (o.status === "accepted")
         button(
           c,
-          o.billed_pounds ? "Scan station & check out" : "Scan bag & weigh",
+          o.billed_pounds ? (o.service==="full_service"?"Confirm customer pickup":"Scan station & check out") : (o.service==="full_service"?"Scan bag & weigh at pickup":"Scan bag & weigh"),
           () =>
             actionWizard(
               o,
@@ -697,7 +703,7 @@ async function orders() {
           c,
           {
             wash_complete: "Laundry is clean",
-            return_bag: "Scan bag on return",
+            return_bag: o.service==="full_service"?"Scan bag at customer return":"Scan bag on return",
             wall_checkin: "Check in at shop",
           }[next],
           () => actionWizard(o, next),
@@ -725,11 +731,11 @@ async function actionWizard(o, action) {
   main.replaceChildren();
   const names = {
     drop_off: ["🏪", "Drop off at the shop"],
-    customer_pickup: ["🛍", "Collect your bag"],
+    customer_pickup: ["🛍", o.service==="full_service"?"Confirm your delivery":"Collect your bag"],
     record_weight: ["⚖", "Record measured weight"],
-    wall_checkout: ["🏪", "Check out at shop"],
+    wall_checkout: [o.service==="full_service"?"🚗":"🏪", o.service==="full_service"?"Confirm customer pickup":"Check out at shop"],
     wash_complete: ["✨", "Finished washing?"],
-    return_bag: ["🧺", "Return the same bag"],
+    return_bag: ["🧺", o.service==="full_service"?"Return laundry to customer":"Return the same bag"],
     wall_checkin: ["🏪", "Check in at shop"],
     accept_job: ["📅", "Can you meet this deadline?"],
     staff_release: ["🔐", "Move to paid pickup bin"],
@@ -747,7 +753,7 @@ async function actionWizard(o, action) {
   c.append(detail);
   const success = {
     drop_off: "Drop-off saved. Your laundry is checked in at the shop.",
-    customer_pickup: "Pickup complete. Enjoy your fresh laundry!",
+    customer_pickup: o.service==="full_service"?"Delivery confirmed. Enjoy your fresh laundry!":"Pickup complete. Enjoy your fresh laundry!",
     record_weight: "Weight saved. Next, scan the shop station to check out.",
     wall_checkout:
       "Checked out. Wash, dry, and fold this order, then return to My jobs.",
@@ -821,8 +827,8 @@ async function actionWizard(o, action) {
       node(
         "p",
         action === "customer_pickup"
-          ? "Match this order to the bag in front of you. Only your paid-and-ready bag can be collected."
-          : "First, scan the matching bag. Manual entry is available if your camera cannot scan.",
+          ? o.service==="full_service"?"Scan the QR on the bag delivered to you. This confirms you received the correct paid order.":"Match this order to the bag in front of you. Only your paid-and-ready bag can be collected."
+          : action==="wall_checkout"&&o.service==="full_service"?"At the customer pickup, scan the matching bag again to confirm custody before leaving.":action==="return_bag"&&o.service==="full_service"?"At the return address, scan the matching bag to confirm delivery.":"First, scan the matching bag. Manual entry is available if your camera cannot scan.",
         { class: "note" },
       ),
     );
@@ -851,6 +857,7 @@ async function actionWizard(o, action) {
       "record_weight",
       "return_bag",
       "staff_release",
+      ...(action==="wall_checkout"&&o.service==="full_service"?["wall_checkout"]:[]),
     ].includes(action)
   )
     await bag();
@@ -888,7 +895,7 @@ async function actionWizard(o, action) {
     stage.append(
       node(
         "p",
-        "Confirm the laundry is washed, dried, folded, and ready to bring back. This does not check it in at the shop.",
+        o.service==="full_service"?"Confirm the laundry is washed, dried, and folded. Next, return it to the customer and scan the same bag.":"Confirm the laundry is washed, dried, folded, and ready to bring back. This does not check it in at the shop.",
         { class: "note" },
       ),
     );
@@ -904,32 +911,26 @@ async function book() {
     "Choose one service. Final weight is measured at the shop.",
   );
   c.prepend(node("p", "STEP 1 OF 3 · SERVICE", { class: "eyebrow" }));
-  const service = "dropoff",
-    choices = node("div", undefined, { class: "choice-grid" });
+  let service = "dropoff";
+  const choices = node("div", undefined, { class: "choice-grid" });
   c.append(choices);
   const drop = choice(
     choices,
     "🧺",
     "Drop off",
     `$${Number(prices.dropoff).toFixed(2)} / lb · bring it to the shop`,
-    () => {},
+    () => {service="dropoff";drop.setAttribute("aria-pressed","true");full.setAttribute("aria-pressed","false")},
   );
   drop.setAttribute("aria-pressed", "true");
   const full = choice(
     choices,
     "🚗",
     "Pickup & return",
-    `$${Number(prices.full_service).toFixed(2)} / lb · coming later`,
-    () => {},
+    `$${Number(prices.full_service).toFixed(2)} / lb · first 5 miles free`,
+    () => {service="full_service";full.setAttribute("aria-pressed","true");drop.setAttribute("aria-pressed","false")},
   );
-  full.disabled = true;
-  c.append(
-    node(
-      "p",
-      "Pickup and return is coming later. It cannot be selected in this preview.",
-      { class: "muted" },
-    ),
-  );
+  full.setAttribute("aria-pressed","false");
+  c.append(node("p","Delivery distance is measured one way from 307 Locust Street. The first 5 miles are free; each additional mile is $1.",{class:"note"}));
   button(c, "Next: choose detergent", () => {
     main.replaceChildren();
     const d = card(
@@ -943,19 +944,29 @@ async function book() {
       ["own", "My sealed, labeled detergent"],
       ["contact", "Please contact me"],
     ]);
+    let pickupAddress,returnAddress,distanceMiles;
+    if(service==="full_service"){
+      pickupAddress=field(d,"Pickup address","text",user.pickupAddress||"");pickupAddress.autocomplete="street-address";
+      returnAddress=field(d,"Return address","text",user.returnAddress||"");returnAddress.autocomplete="street-address";
+      distanceMiles=field(d,"One-way miles from the shop","number");distanceMiles.min="0";distanceMiles.max="100";distanceMiles.step="0.1";
+      d.append(node("p","Use the same address twice when pickup and return are at the same place. This private test uses the entered mileage; automatic map verification will be connected before public launch.",{class:"note"}));
+    }
     const rush = check(d, "Ask about rush service (approval required)");
     button(d, "Next: review order", () => {
+      const miles=service==="full_service"?Number(distanceMiles.value):0;
+      if(service==="full_service"&&(pickupAddress.value.trim().length<5||returnAddress.value.trim().length<5||!Number.isFinite(miles)||miles<0||miles>100))throw Error("Enter both addresses and a distance from 0 to 100 miles.");
+      const mileageFee=service==="full_service"?Math.max(0,miles-5):0;
       main.replaceChildren();
       const review = card(
         "🌿",
         "Ready to book?",
-        `Drop off · $${Number(prices.dropoff).toFixed(2)} / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? "Rush requested; not yet approved." : "Standard service."}`,
+        `${service==="full_service"?"Pickup & return":"Drop off"} · $${Number(prices[service]).toFixed(2)} / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? "Rush requested; not yet approved." : "Standard service."}`,
       );
       review.prepend(node("p", "STEP 3 OF 3 · REVIEW", { class: "eyebrow" }));
       review.append(
         node(
           "p",
-          `We round the measured weight up to the next ½ lb. Approved rush would add $${Number(prices.rushPerLb).toFixed(2)}/lb. No payment is taken here.`,
+          `We round the measured weight up to the next ½ lb. Approved rush would add $${Number(prices.rushPerLb).toFixed(2)}/lb.${service==="full_service"?` Distance: ${miles.toFixed(1)} miles · delivery fee: $${mileageFee.toFixed(2)} (first 5 miles free, then $1/mile).`:""} No payment is taken here.`,
           { class: "note" },
         ),
       );
@@ -964,10 +975,11 @@ async function book() {
           service,
           detergent: detergent.value,
           rush_requested: rush.checked,
+          ...(service==="full_service"?{pickupAddress:pickupAddress.value,returnAddress:returnAddress.value,distanceMiles:miles}:{}),
         });
         await route("orders");
         message(
-          "Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
+          service==="full_service"?"Delivery order booked. Approved contractors can now review the mileage and deadline.":"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
         );
       });
       button(review, "Start again", () => route("book"), true);
@@ -1341,6 +1353,7 @@ function managementWorkspace(data) {
 }
 function managementPricing(data){
   const prices=data.pricing||{dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
+  c.append(node("p","Pickup & return distance pricing: first 5 one-way miles from 307 Locust Street are free, then $1.00 per additional mile.",{class:"note"}));
   if(!data.pricingPinSet){c.append(node("p","Create a separate six-digit PIN. You will enter it every time pricing changes.",{class:"note"}));const pin=field(c,"New six-digit pricing PIN","password"),confirmPin=field(c,"Enter the PIN again","password");for(const input of [pin,confirmPin]){input.inputMode="numeric";input.maxLength=6;input.pattern="[0-9]{6}"}button(c,"Set pricing PIN",async()=>{await api("/api/management/pricing",{action:"set_pin",pin:pin.value,confirmPin:confirmPin.value});await route("management");message("Pricing PIN created. Open Pricing again to make changes.")});return}
   const inputs={};for(const [key,label] of [["dropoff","Customer drop-off price per lb"],["full_service","Customer pickup & return price per lb"],["rushPerLb","Rush addition per lb"],["extraBag","Extra or replacement bag price"],["contractor","Contractor pay per approved lb"]]){inputs[key]=field(c,label,"number",Number(prices[key]).toFixed(2));inputs[key].min="0";inputs[key].max="100";inputs[key].step="0.01"}
   const pin=field(c,"Confirm with six-digit pricing PIN","password");pin.inputMode="numeric";pin.maxLength=6;pin.pattern="[0-9]{6}";
@@ -1754,7 +1767,14 @@ function stepLabel(action) {
   );
 }
 function timeline(parent, o) {
-  const steps = [
+  const steps = o.service==="full_service"?[
+    ["Bag linked",true],
+    ["Contractor accepted",!!o.assigned_contractor_id],
+    ["Picked up",!!o.checked_out_at],
+    ["Delivered",!!o.delivered_at],
+    ["Paid",!!o.payment_verified],
+    ["Customer confirmed",!!o.picked_up_at],
+  ]:[
     ["Bag linked", true],
     ["At shop", !!o.dropped_at],
     ["Washing", !!o.checked_out_at],

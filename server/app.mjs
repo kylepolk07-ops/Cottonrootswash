@@ -9,7 +9,7 @@ import {shopDateKey} from '../shared/calendar.mjs';
 import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
-import {invoiceTotal} from '../shared/rules.mjs';
+import {invoiceTotal,deliveryFee} from '../shared/rules.mjs';
 import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeTestCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -190,7 +190,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      fail(403,'Dashboard unavailable');
     }
     if(path==='/api/orders')return send(200,{orders:state.orders.filter(o=>visible(o,user)).map(o=>{
-     const v=publicOrder(o);if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;}return v;
+     const v=publicOrder(o);if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;if(o.assigned_contractor_id!==user.id){delete v.pickup_address;delete v.return_address}}return v;
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
@@ -301,10 +301,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     }else if(path==='/api/orders'){
      if(user.role!=='customer')fail(403,'Customer required');
      if(!['dropoff','full_service'].includes(body.service)||!['standard','own','contact'].includes(body.detergent))fail(400,'Invalid booking');
-     if(body.service==='full_service')fail(409,'Home collection routing is not yet available');
      const bag=state.bags.find(b=>b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(409,'Claim an active bag first');
      if(state.orders.some(o=>o.bag_id===bag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Bag already has an active order');
-     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,created_at:new Date().toISOString(),due_at:null,due_note:'Deadline is set from the verified shop drop-off time.'};
+     let pickupAddress=null,returnAddress=null,distanceMiles=0,distanceCharge=0;if(body.service==='full_service'){
+      pickupAddress=typeof body.pickupAddress==='string'?body.pickupAddress.trim():'';returnAddress=typeof body.returnAddress==='string'?body.returnAddress.trim():'';distanceMiles=Number(body.distanceMiles);
+      if(pickupAddress.length<5||pickupAddress.length>200||returnAddress.length<5||returnAddress.length>200||!Number.isFinite(distanceMiles)||distanceMiles<0||distanceMiles>100)fail(400,'Enter valid pickup and return addresses and a distance from 0 to 100 miles');
+      distanceCharge=deliveryFee(distanceMiles);
+     }
+     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:body.service==='full_service'?'offered':'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,delivery_free_miles:5,delivery_rate_per_mile:1,delivery_miles:distanceMiles,delivery_fee:distanceCharge,pickup_address:pickupAddress,return_address:returnAddress,created_at:new Date().toISOString(),due_at:body.service==='full_service'?shopDueDeadline():null,due_note:body.service==='full_service'?SHOP_DUE_NOTE:'Deadline is set from the verified shop drop-off time.'};
      state.orders.push(order);result={order};
     }else if(path==='/api/availability'){
      if(user.role!=='contractor')fail(403,'Contractor required');
@@ -386,7 +390,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       if(action===ACTION.WASH_COMPLETE&&o.wash_completed_at||action===ACTION.RETURN_BAG&&o.return_bag_scanned_at)fail(409,'Scan already recorded');
       let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
       if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
-      if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved,{dropoff:updated.customer_rate_per_lb??DEFAULT_PRICING.dropoff,full_service:updated.customer_rate_per_lb??DEFAULT_PRICING.full_service,rushPerLb:updated.rush_rate_per_lb??DEFAULT_PRICING.rushPerLb});
+      if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved,{dropoff:updated.customer_rate_per_lb??DEFAULT_PRICING.dropoff,full_service:updated.customer_rate_per_lb??DEFAULT_PRICING.full_service,rushPerLb:updated.rush_rate_per_lb??DEFAULT_PRICING.rushPerLb},updated.delivery_fee||0);
       state.orders[index]=updated;result={order:publicOrder(updated)};
      }
     }else fail(404,'Not found');
