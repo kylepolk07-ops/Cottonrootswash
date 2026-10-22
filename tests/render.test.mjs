@@ -54,6 +54,13 @@ test('Render injected credentials initialize once, survive restart, and never ap
  assert.equal((await h.login('owner',replacement.owner)).status,401,'Changing bootstrap env must not silently rotate existing account');
 });
 
+test('disposable testers can reuse the private gate code without granting owner access',async t=>{
+ const h=await harness(t);
+ for(const username of ['customer','contractor'])assert.equal((await h.login(username,h.env.CRC_STAGING_PASSWORD)).status,200,username);
+ assert.equal((await h.login('owner',h.env.CRC_STAGING_PASSWORD)).status,401);
+ assert.equal((await h.login('customer','wrong-'+secret())).status,401);
+});
+
 test('Render test kit is owner-only, disabled without fixtures and behind the private gate',async t=>{
  const h=await harness(t);
  assert.equal((await h.request('/api/management/test-kit',{headers:{authorization:''}})).status,401);

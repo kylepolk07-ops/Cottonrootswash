@@ -85,7 +85,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const key=req.socket.remoteAddress;const now=Date.now();let a=attempts.get(key);if(!a||now-a.at>60000)a={count:0,at:now};attempts.set(key,a);if(++a.count>20)fail(429,'Try again later');
     const u=state.users.find(u=>u.username===body.username);
     const candidate=scryptSync(String(body.password||'').slice(0,256),u?.salt||'dummy',64);
-    if(!u||!timingSafeEqual(candidate,Buffer.from(u.passwordHash,'hex')))fail(401,'Invalid credentials');
+    const storedMatch=Boolean(u)&&timingSafeEqual(candidate,Buffer.from(u.passwordHash,'hex'));
+    // The disposable Render trial is already protected by the private-access
+    // gate. Let testers reuse that code for non-management fixture accounts so
+    // generated bootstrap passwords cannot strand a trial. Owner access stays
+    // on its separate credential.
+    const trialCandidate=scryptSync(String(body.password||'').slice(0,256),'crc-disposable-trial',64);
+    const trialExpected=scryptSync(stagingPassword||'unavailable','crc-disposable-trial',64);
+    const trialMatch=disposable&&Boolean(u)&&['customer','contractor'].includes(u.role)&&timingSafeEqual(trialCandidate,trialExpected);
+    if(!storedMatch&&!trialMatch)fail(401,'Invalid credentials');
     for(const [key,value] of sessions)if(value.expires<now)sessions.delete(key);
     if(sessions.size>=1000)fail(429,'Session capacity reached');
     const sid=token(),csrf=token();sessions.set(hash(sid),{userId:u.id,csrf,expires:now+8*3600000});

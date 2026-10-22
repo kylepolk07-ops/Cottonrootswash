@@ -82,3 +82,8 @@ Tests and browser harness cleanup remove isolated fixtures, certificates and coo
 Additional full-flow failure was diagnosed before push: at UTC00:21 while Texas remained on the prior evening, server job acceptance used UTC today's date while the UI saved today's local shop date, so the browser could not proceed to weighing. Added shared/calendar.mjs with canonical America/Chicago shop-date and DST-safe 14-day sequence; both server acceptance and browser availability use it. Added deterministic UTC-midnight/local-midnight/winter/DST tests; API fixtures now use shop-day keys. No deadline promises or fees were changed. Full local browser custody workflow passed after correction. This is separate from the unconfirmed original native-prompt failure.
 
 Final evidence for this update: npm test29/29 passed, zero failed/skipped; npm run check passed; existing mobile-size full custody browser test passed; private-code TLS-loopback browser test passed; pinned Docker build and Render disposable container checks passed. Failed harness attempts and the fixed timezone failure remain documented rather than represented as successful runs. Original native-prompt credential/browser cause and actual owner iPhone login are still unverified. Source updates prepared for staging/phone-trial; actual deployment progress must be checked in Render.
+# 2026-10-21 — Disposable trial sign-in repair
+
+- Allowed the private Render access code to authenticate the synthetic Customer and Contractor fixtures after the outer private gate.
+- Kept owner/Management on its separate password and limited the convenience path to disposable staging.
+- Updated the login instructions and added regression coverage for both allowed trial roles and denied owner access.
