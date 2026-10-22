@@ -10,6 +10,7 @@ import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal} from '../shared/rules.mjs';
+import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeTestCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
@@ -37,6 +38,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
  let row=db.prepare('SELECT value FROM state WHERE id=1').get();
  let state=row?JSON.parse(row.value):{users:[],bags:[],orders:[],audit:[],keys:{},stationToken:token()};
+ state.complaints??=[];
  state.paymentEvents??=[];
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
  if(!row && fixtures){
@@ -205,7 +207,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      headers['Content-Type']='text/html; charset=utf-8';headers['Content-Security-Policy']="default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
      res.writeHead(200,headers);res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${bag.id} bag tag</title><style>@page{size:3.5in 2.25in;margin:0}*{box-sizing:border-box}html,body{margin:0;background:#eee;color:#173f32;font-family:Arial,sans-serif}.sheet{width:3.5in;height:2.25in;padding:.09in;background:#fff}.tag{width:100%;height:100%;border:.025in dashed #173f32;border-radius:.12in;padding:.12in;display:grid;grid-template-columns:1.25in 1fr;gap:.12in;overflow:hidden}.qr{width:1.18in;height:1.18in;display:block}.brand{font:700 .15in Georgia,serif;color:#8b6a22;letter-spacing:.02in}.bag{font:700 .24in Georgia,serif;margin:.02in 0 .08in}.line{border-bottom:1px solid #355b49;height:.25in;font-size:.1in;padding-top:.08in}.hint{font-size:.075in;color:#52655b;margin-top:.04in;line-height:1.2}.scan{font-size:.075in;font-weight:700;text-align:center;margin-top:.04in;line-height:1.25}@media print{html,body{background:#fff}.sheet{break-inside:avoid}}</style></head><body><main class="sheet"><section class="tag"><div><img class="qr" src="${qr}" alt="QR code for ${bag.id}"><div class="scan">SCAN TO REGISTER<br>CHECK IN · CHECK OUT</div></div><div><div class="brand">COTTON ROOTS &amp; CO.</div><div class="bag">${bag.id.toUpperCase()}</div><div class="line">Name / initials:</div><div class="line">Phone last 4:</div><div class="line">Notes:</div><div class="hint">Cut on the dashed border and place in a 3.5 × 2.25 inch protective holder. Use your browser’s Print command at 100% scale.</div></div></section></main></body></html>`);return;
     }
-    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(publicOrder),audit:state.audit})}
+    if(path==='/api/complaints'){
+     if(user.role!=='customer')fail(403,'Customer required');
+     return send(200,{complaints:state.complaints.filter(item=>item.customer_id===user.id)});
+    }
+    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,audit:state.audit})}
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
@@ -246,6 +252,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='customer')fail(403,'Customer required');
      const bag=state.bags.find(b=>b.id===body.bagId&&b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(404,'Bag not found');
      bag.exchange_requested_at??=new Date().toISOString();result={bag:{id:bag.id,exchange_requested_at:bag.exchange_requested_at}};
+    }else if(path==='/api/complaints'){
+     if(user.role!=='customer')fail(403,'Customer required');
+     const orderId=typeof body.orderId==='string'?body.orderId:'';
+     const order=state.orders.find(item=>item.id===orderId&&item.customer_id===user.id);if(!order)fail(404,'Order not found');
+     const category=typeof body.category==='string'?body.category:'';
+     const message=typeof body.message==='string'?body.message.trim():'';
+     if(!['service','late','bag','payment','other'].includes(category)||message.length<10||message.length>1000)fail(400,'Choose a topic and enter 10–1000 characters');
+     const complaint={id:token().slice(0,24),customer_id:user.id,order_id:order.id,category,message,status:'open',created_at:new Date().toISOString()};
+     state.complaints.push(complaint);result={complaint};
     }else if(path==='/api/claim'){
      if(user.role!=='customer')fail(403,'Customer required');
      const bag=state.bags.find(b=>b.token===body.bagToken&&b.status!=='retired');if(!bag)fail(409,'Bag unavailable');
@@ -297,6 +312,13 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='owner')fail(403,'Owner access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');
      if(body.phoneConfirmed!==true||body.inPersonConfirmed!==true)fail(400,'Confirm the phone conversation and in-person shop meeting first');
      const approvedAt=new Date().toISOString();applicant.approved=true;applicant.phone_screen_confirmed_at=approvedAt;applicant.shop_meeting_confirmed_at=approvedAt;applicant.approved_at=approvedAt;applicant.approved_by=user.id;result={user:publicUser(applicant)};
+    }else if(/^\/api\/management\/complaints\/[^/]+$/.test(path)){
+     if(!staff(user))fail(403,'Management access required');
+     const complaint=state.complaints.find(item=>item.id===path.split('/').at(-1));if(!complaint)fail(404,'Complaint not found');
+     if(!['resolved','open'].includes(body.status))fail(400,'Choose open or resolved');
+     complaint.status=body.status;
+     if(body.status==='resolved'){complaint.resolved_at=new Date().toISOString();complaint.resolved_by=user.id}else{delete complaint.resolved_at;delete complaint.resolved_by}
+     result={complaint};
     }else if(/^\/api\/orders\/[^/]+\/actions$/.test(path)){
      const id=path.split('/')[3],index=state.orders.findIndex(o=>o.id===id),o=state.orders[index];if(!o||!visible(o,user))fail(404,'Order not found');
      const action=body.action,bag=state.bags.find(b=>b.id===o.bag_id),bagVerified=typeof body.bagToken==='string'&&body.bagToken===bag.token;

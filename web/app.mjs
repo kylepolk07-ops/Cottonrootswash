@@ -490,6 +490,19 @@ function summary(c, o) {
     );
   if (o.due_note) c.append(node("p", o.due_note, { class: "muted" }));
 }
+function contractorReminder(order) {
+  if(user?.role!=="contractor"||order.assigned_contractor_id!==user.id||!["accepted","washing"].includes(order.status)||!order.due_at||order.returned_at)return null;
+  const minutes=Math.ceil((Date.parse(order.due_at)-Date.now())/60000);
+  if(!Number.isFinite(minutes)||minutes>360)return null;
+  const late=minutes<=0,amount=Math.abs(minutes),hours=Math.floor(amount/60),remainder=amount%60,time=[hours?`${hours} hr`:"",remainder?`${remainder} min`:""].filter(Boolean).join(" ")||"now";
+  return {late,text:late?`LATE by ${time}`:`${time} remaining`,level:late?"late":minutes<=60?"one hour":minutes<=180?"three hours":"six hours"};
+}
+function contractorReminders(orders) {
+  const reminders=orders.map(order=>[order,contractorReminder(order)]).filter(([,reminder])=>reminder);
+  if(!reminders.length)return;
+  const c=card("⏰","Deadline reminders","These update whenever you open or refresh the app.");
+  for(const [order,reminder] of reminders){const row=node("div",undefined,{class:"step"});row.append(node("div",reminder.late?"!":"⏱",{class:"big"}),node("p",`${reminder.text} · ${order.bag_id}\nDue ${new Date(order.due_at).toLocaleString()}`));c.append(row)}
+}
 function testPaymentPricing(total) {
   const base = Math.round(Number(total) * 100),
     rate = Number(paymentPreview?.estimatedFee?.basisPoints),
@@ -542,6 +555,7 @@ async function orders() {
       ? "Updates are shared securely with the shop. Payment and pickup are separate steps."
       : "Accept only when you can meet the displayed deadline. Scan the bag and shop station at each required visit.",
   );
+  if(app==="contractor"&&page!=="offers")contractorReminders(orders);
   const filterBox = node("div", undefined, { class: "filter" });
   main.append(filterBox);
   const filter = select(
@@ -638,6 +652,7 @@ async function orders() {
             { class: "muted" },
           ),
         );
+      button(c, "Report a problem", () => complaintForm(o), true);
     } else if (user.role === "contractor") {
       if (["at_shop", "offered"].includes(o.status))
         button(c, "Review this offer", () => actionWizard(o, "accept_job"));
@@ -672,6 +687,16 @@ async function orders() {
         actionWizard(o, "staff_release"),
       );
   }
+}
+function complaintForm(order) {
+  reset();
+  const c = card("💬", "Report a problem", "Management will see this in the Customer complaints tab. Do not enter card numbers or identity documents.");
+  c.append(node("p", `Order ${order.id}`, { class: "note" }));
+  const category = select(c, "What is this about?", [["service","Service"],["late","Late return"],["bag","Bag"],["payment","Payment"],["other","Other"]]);
+  const label=node("label","Tell us what happened"), details=node("textarea");
+  details.rows=5;details.maxLength=1000;details.placeholder="At least 10 characters";label.append(details);c.append(label);
+  button(c,"Send to Management",async()=>{await api("/api/complaints",{orderId:order.id,category:category.value,message:details.value});await route("orders");message("Your report was sent to Management.");});
+  button(c,"Cancel",()=>route("orders"),true);
 }
 async function actionWizard(o, action) {
   stopCamera?.();
@@ -1258,6 +1283,9 @@ function managementWorkspace(data) {
   if (managementView === "bags") return bagInventory(data);
   if (managementView === "money") return moneyManagement(data);
   if (managementView === "tools") return managementTestTools();
+  if (managementView === "orders") return managementOrders(data);
+  if (managementView === "alerts") return managementAlerts(data);
+  if (managementView === "complaints") return managementComplaints(data);
   const c = card(
     "⚙️",
     "Management",
@@ -1268,6 +1296,9 @@ function managementWorkspace(data) {
   stat(stats, (data.users || []).filter((u) => u.role === "customer").length, "Customers");
   stat(stats, (data.users || []).filter((u) => u.role === "contractor").length, "Contractors");
   stat(stats, (data.bags || []).filter((b) => b.exchange_requested_at).length, "Bag exchanges");
+  stat(stats, (data.orders || []).filter((o) => o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup).length, "Ready for pickup");
+  stat(stats, (data.orders || []).filter((o) => o.deadline_alert).length, "Late alerts");
+  stat(stats, (data.complaints || []).filter((item) => item.status === "open").length, "Open complaints");
   const choices = node("div", undefined, { class: "choice-grid" });
   c.append(choices);
   for (const [key, icon, title, description] of [
@@ -1275,12 +1306,47 @@ function managementWorkspace(data) {
     ["contractors", "🧺", "Contractors", "Approvals, access, availability, and jobs"],
     ["bags", "🛍", "Bag inventory", "Available, assigned, exchange, and retired bags"],
     ["money", "💵", "Money", "Payment status and contractor amounts due"],
+    ["orders", "📦", "Orders", "Ready for pickup and completed orders"],
+    ["alerts", "⏰", "Late alerts", "Due within 6 hours and overdue work"],
+    ["complaints", "💬", "Customer complaints", "Review and resolve customer reports"],
     ["tools", "🧪", "Pilot tools", "Synthetic QR and station test codes"],
   ])
     choice(choices, icon, title, description, () => {
       managementView = key;
       route("management");
     });
+}
+function managementOrders(data) {
+  const c=card("📦","Orders","Ready bags are shown first. Completed orders stay available for your records.");managementBack(c);
+  const ready=(data.orders||[]).filter(o=>o.status==="paid_ready"&&o.payment_verified&&o.ready_for_pickup);
+  const completed=(data.orders||[]).filter(o=>o.status==="picked_up").sort((a,b)=>Date.parse(b.picked_up_at||0)-Date.parse(a.picked_up_at||0));
+  c.append(node("h3",`Ready for pickup (${ready.length})`));
+  if(!ready.length)c.append(node("p","No orders are waiting for pickup.",{class:"muted"}));
+  for(const o of ready)managementOrderRow(c,o,data);
+  c.append(node("h3",`Completed (${completed.length})`));
+  if(!completed.length)c.append(node("p","No completed orders yet.",{class:"muted"}));
+  for(const o of completed)managementOrderRow(c,o,data);
+}
+function managementOrderRow(parent,o,data) {
+  const customer=(data.users||[]).find(u=>u.id===o.customer_id),contractor=(data.users||[]).find(u=>u.id===o.assigned_contractor_id);
+  const row=node("div",undefined,{class:"step"});
+  row.append(node("div",o.status==="picked_up"?"✓":"🧺",{class:"big"}),node("p",`${o.bag_id||"No bag"} · Customer: ${customer?.displayName||customer?.username||o.customer_id||"Unknown"}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\n${o.status==="picked_up"?`Completed ${new Date(o.picked_up_at).toLocaleString()}`:"Paid and ready for pickup"}`));parent.append(row);
+}
+function alertText(alert){
+ const minutes=alert.state==="overdue"?alert.minutesLate:alert.minutesUntil,hours=Math.floor(minutes/60),remainder=minutes%60,amount=[hours?`${hours}h`:"",remainder?`${remainder}m`:""].filter(Boolean).join(" ")||"now";
+ return alert.state==="overdue"?`${amount} late`:`Due in ${amount}`;
+}
+function managementAlerts(data) {
+  const c=card("⏰","Late alerts","Warnings begin 6 hours before the promised return time.");managementBack(c);
+  const alerts=(data.orders||[]).filter(o=>o.deadline_alert).sort((a,b)=>{if(a.deadline_alert.state!==b.deadline_alert.state)return a.deadline_alert.state==="overdue"?-1:1;return Date.parse(a.due_at)-Date.parse(b.due_at)});
+  const overdue=alerts.filter(o=>o.deadline_alert.state==="overdue"),soon=alerts.filter(o=>o.deadline_alert.state==="due_soon");
+  for(const [title,list] of [["Late now",overdue],["Due within 6 hours",soon]]){c.append(node("h3",`${title} (${list.length})`));if(!list.length)c.append(node("p","Nothing in this section.",{class:"muted"}));for(const o of list){const contractor=(data.users||[]).find(u=>u.id===o.assigned_contractor_id),row=node("div",undefined,{class:"step"});row.append(node("div",o.deadline_alert.state==="overdue"?"!":"⏱",{class:"big"}),node("p",`${alertText(o.deadline_alert)} · ${o.bag_id}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\nDue ${new Date(o.due_at).toLocaleString()}`));c.append(row)}}
+}
+function managementComplaints(data) {
+  const c=card("💬","Customer complaints","Open reports appear first. Customer messages are shown exactly as submitted.");managementBack(c);
+  const items=[...(data.complaints||[])].sort((a,b)=>(a.status==="open"?-1:1)-(b.status==="open"?-1:1)||Date.parse(b.created_at)-Date.parse(a.created_at));
+  if(!items.length)c.append(node("p","No customer complaints have been submitted.",{class:"muted"}));
+  for(const item of items){const customer=(data.users||[]).find(u=>u.id===item.customer_id),box=card(item.status==="open"?"🔴":"✓",`${item.category} · ${item.status}`,`Order ${item.order_id}`);box.append(node("p",item.message),node("p",`${customer?.displayName||customer?.username||"Customer"} · ${new Date(item.created_at).toLocaleString()}`,{class:"muted"}));button(box,item.status==="open"?"Mark resolved":"Reopen",async()=>{await api(`/api/management/complaints/${item.id}`,{status:item.status==="open"?"resolved":"open"});message("Complaint updated.");route("management")},item.status!=="open")}
 }
 function managementBack(parent) {
   button(parent, "← Management home", () => {
@@ -1808,6 +1874,7 @@ async function home() {
         o.assigned_contractor_id === user.id &&
         ["accepted", "washing"].includes(o.status),
     );
+    contractorReminders(all);
     if (next) {
       const c = card("🧺", "Continue your current job");
       summary(c, next);

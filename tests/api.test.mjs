@@ -123,6 +123,23 @@ test('role dashboards summarize only authorized product data',async t=>{
  assert.equal(management.role,'management');assert.equal(management.openOrders,1);
 });
 
+test('customer complaints are private, persistent and managed by staff',async t=>{
+ const h=await harness(t),customer=await h.client('customer'),other=await h.client('customer2'),contractor=await h.client('contractor'),owner=await h.client('owner');
+ const order=await setupOrder(h,customer);
+ denied(await contractor.request('/api/complaints',{method:'POST',body:{orderId:order.id,category:'service',message:'Contractors cannot submit this.'}}));
+ assert.equal((await other.request('/api/complaints')).data.complaints.length,0);
+ denied(await other.request('/api/complaints',{method:'POST',body:{orderId:order.id,category:'service',message:'This order belongs to someone else.'}}));
+ denied(await customer.request('/api/complaints',{method:'POST',body:{orderId:order.id,category:'bad',message:'This category is invalid.'}}));
+ const created=await customer.request('/api/complaints',{method:'POST',body:{orderId:order.id,category:'late',message:'My laundry has not been returned on time.',status:'resolved',customer_id:'forged'}});
+ assert.equal(created.status,200);assert.equal(created.data.complaint.status,'open');assert.equal(created.data.complaint.customer_id,'customer');
+ assert.equal((await customer.request('/api/complaints')).data.complaints.length,1);
+ let management=await owner.request('/api/management');assert.equal(management.data.complaints.length,1);
+ const resolved=await owner.request(`/api/management/complaints/${created.data.complaint.id}`,{method:'POST',body:{status:'resolved'}});
+ assert.equal(resolved.status,200);assert.equal(resolved.data.complaint.status,'resolved');assert.ok(resolved.data.complaint.resolved_at);
+ await h.restart();
+ const restoredOwner=await h.client('owner');management=await restoredOwner.request('/api/management');assert.equal(management.data.complaints[0].status,'resolved');
+});
+
 test('custody workflow rejects forged scans, unpaid pickup, duplicates and competing acceptance',async t=>{
  const h=await harness(t),c=await h.client('customer'),k=await h.client('contractor'),k2=await h.client('contractor2');
  const o=await setupOrder(h,c),scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};

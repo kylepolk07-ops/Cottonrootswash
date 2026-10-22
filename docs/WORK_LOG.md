@@ -9,6 +9,12 @@ Lead `/root` added a device-local Customer/Contractor preference. After the firs
 
 Lead `/root` added the missing synthetic station QR to **Management → Pilot tools**, clearly separated from the sample bag QR. The image encodes only the existing private station token, is owner-only, disables caching, and remains behind staging authentication. Added an adversarial test covering outer-gate denial, account authentication, customer/contractor denial, exact station-token encoding, and separation from the bag token. This is private pilot material; no production station or public launch was activated.
 
+## 2026-10-22 — Management order, complaint, and deadline workspaces
+
+Lead `/root` added separate Management areas for orders ready for pickup and completed orders, customer complaints, and deadline alerts. Deadline warnings begin six hours before the promised return time and switch to elapsed hours/minutes late after the deadline; returned and terminal orders are excluded. Customers can report an order problem using a constrained topic and 10–1000 character message, with a warning not to submit payment or identity data. Reports are ownership-scoped, persisted, visible to Management, and can be resolved or reopened only by Management. Review contributors `/root/mgmt_dashboard_review` and `/root/complaint_alert_tests` made no source edits and centrally reported status definitions, secure complaint-model requirements, time-boundary cases, and authorization risks; lead incorporated and reviewed their recommendations.
+
+Contractor Home and My Jobs now show in-app deadline reminders beginning six hours before the due time, with more urgent three-hour and one-hour states and an elapsed late time after the deadline. The reminder is limited to that contractor's accepted active work and updates on app open/refresh. External SMS and phone push notifications remain unconnected because they require contractor opt-in and an approved notification provider.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |
