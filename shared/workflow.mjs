@@ -19,12 +19,12 @@ export function transition(order,action,ctx={}){
     case ACTION.ACCEPT:
       requireIt([ORDER_STATUS.AT_SHOP,ORDER_STATUS.OFFERED].includes(o.status),'Job unavailable');
       requireIt(ctx.contractorApproved===true && ctx.deadlineAcknowledged===true,'Contractor onboarding and deadline acknowledgment required');
-      o.status=ORDER_STATUS.ACCEPTED;o.assigned_contractor_id=ctx.contractorId;break;
+      o.status=ORDER_STATUS.ACCEPTED;o.assigned_contractor_id=ctx.contractorId;o.accepted_at=at;break;
     case ACTION.WEIGH:
       requireIt(o.status===ORDER_STATUS.ACCEPTED,'Job must be accepted before weighing');
       requireIt(ctx.actorId===o.assigned_contractor_id && ctx.bagVerified===true,'Assigned contractor and bag required');
       requireIt(Number.isFinite(Number(ctx.measuredPounds)) && Number(ctx.measuredPounds)>0,'Positive measured weight required');
-      o.measured_pounds=Number(ctx.measuredPounds);o.billed_pounds=roundUpHalfPound(ctx.measuredPounds);break;
+      o.measured_pounds=Number(ctx.measuredPounds);o.billed_pounds=roundUpHalfPound(ctx.measuredPounds);o.weighed_at=at;break;
     case ACTION.CHECK_OUT:
       requireIt(o.status===ORDER_STATUS.ACCEPTED && o.billed_pounds>0,'Weigh laundry before check-out');
       requireIt(ctx.actorId===o.assigned_contractor_id && (o.service==='full_service'?ctx.bagVerified===true:ctx.wallStationVerified===true),o.service==='full_service'?'Assigned contractor must scan the bag at customer pickup':'Assigned contractor must scan shop wall QR');

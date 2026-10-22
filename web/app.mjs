@@ -499,6 +499,8 @@ function summary(c, o) {
   if(o.service==="full_service"){
     c.append(node("p",`Delivery: ${Number(o.delivery_miles||0).toFixed(1)} miles from shop · $${Number(o.delivery_fee||0).toFixed(2)} distance fee`,{class:"note"}));
     if(o.pickup_address)c.append(node("p",`Pickup: ${o.pickup_address}\nReturn: ${o.return_address}`,{class:"muted"}));
+    if(o.delivery_instructions)c.append(node("p",`Customer delivery note: ${o.delivery_instructions}`,{class:"note"}));
+    if(o.delivery_photo_at){const proof=node("a","View delivery photo",{href:`/api/orders/${encodeURIComponent(o.id)}/delivery-proof`,target:"_blank",rel:"noopener",class:"role-continue"});c.append(node("p",`Delivery photo taken ${new Date(o.delivery_photo_at).toLocaleString()}`,{class:"muted"}),proof)}
   }
   if (o.rush_requested)
     c.append(
@@ -587,10 +589,9 @@ async function orders() {
     "Laundry status",
     app === "customer"
       ? [
-          ["all", "All my laundry"],
           ["active", "In progress"],
           ["ready", "Paid & ready"],
-          ["complete", "Collected"],
+          ["complete", "Past laundry"],
         ]
       : page === "offers"
         ? [["all", "All available offers"]]
@@ -600,6 +601,7 @@ async function orders() {
             ["complete", "Returned jobs"],
           ],
   );
+  if(app==="customer")filter.value="active";
   const showing=node("p",undefined,{class:"note"});
   filterBox.append(showing);
   button(filterBox,"Refresh status",()=>route(page),true);
@@ -621,13 +623,7 @@ async function orders() {
         key === "all" ||
         (key === "offers" && ["at_shop", "offered"].includes(o.status)) ||
         (key === "active" &&
-          ![
-            "picked_up",
-            "cancelled",
-            "payment_pending",
-            "paid_hold",
-            "paid_ready",
-          ].includes(o.status) &&
+          !["picked_up", "cancelled"].includes(o.status) &&
           (app === "customer" || o.assigned_contractor_id === user.id)) ||
         (key === "ready" &&
           o.status === "paid_ready" &&
@@ -764,7 +760,7 @@ async function actionWizard(o, action) {
       "Checked out. Wash, dry, and fold this order, then return to My jobs.",
     wash_complete:
       "Laundry marked clean. Next, bring back and scan the same bag.",
-    return_bag: "Bag scan saved. Next, scan the shop station to check in.",
+    return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Bag scan saved. Next, scan the shop station to check in.",
     wall_checkin:
       "Return complete. Earnings stay pending until customer payment is verified.",
     accept_job: "Offer accepted. Open My jobs when you are ready to begin.",
@@ -838,6 +834,10 @@ async function actionWizard(o, action) {
       ),
     );
     const token = await scanField(stage, "Scan the matching bag QR");
+    let deliveryPhoto;
+    if(action==="return_bag"&&o.service==="full_service"){
+      const label=node("label","Take a photo showing where the bag was left"),input=node("input",undefined,{type:"file",accept:"image/jpeg,image/png",capture:"environment"});label.append(input);stage.append(label,node("p",`Follow the customer note: ${o.delivery_instructions||"Hand directly to the customer if available."}`,{class:"note"}));deliveryPhoto=input;
+    }
     button(
       stage,
       action === "drop_off"
@@ -851,7 +851,7 @@ async function actionWizard(o, action) {
         body.bagToken = token.value.trim();
         if (action === "drop_off") await station();
         else if (action === "record_weight") weigh();
-        else await submit();
+        else {if(deliveryPhoto){const file=deliveryPhoto.files?.[0];if(!file)throw Error("Take a delivery photo first.");body.deliveryPhoto=await prepareDeliveryPhoto(file)}await submit()}
       },
     );
   }
@@ -908,6 +908,11 @@ async function actionWizard(o, action) {
   }
   button(c, "Back to laundry", () => route("orders"), true);
 }
+async function prepareDeliveryPhoto(file){
+  if(!["image/jpeg","image/png"].includes(file.type)||file.size>12000000)throw Error("Choose a JPEG or PNG photo smaller than 12 MB.");
+  const image=await createImageBitmap(file),scale=Math.min(1,1280/Math.max(image.width,image.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext("2d").drawImage(image,0,0,canvas.width,canvas.height);image.close();
+  return canvas.toDataURL("image/jpeg",.72);
+}
 async function book() {
   const prices=pricingPreview||{dropoff:2.5,full_service:3,rushPerLb:1};
   const c = card(
@@ -949,18 +954,13 @@ async function book() {
       ["own", "My sealed, labeled detergent"],
       ["contact", "Please contact me"],
     ]);
-    let pickupAddress,returnAddress,distanceMiles;
     if(service==="full_service"){
-      pickupAddress=field(d,"Pickup address","text",user.pickupAddress||"");pickupAddress.autocomplete="street-address";
-      returnAddress=field(d,"Return address","text",user.returnAddress||"");returnAddress.autocomplete="street-address";
-      distanceMiles=field(d,"One-way miles from the shop","number");distanceMiles.min="0";distanceMiles.max="100";distanceMiles.step="0.1";
-      d.append(node("p","Use the same address twice when pickup and return are at the same place. This private test uses the entered mileage; automatic map verification will be connected before public launch.",{class:"note"}));
+      if(!user.address){d.append(node("p","Add your home or camper address in My profile before booking pickup and return.",{class:"note"}));button(d,"Add my address",()=>route("profile"),true)}
+      else d.append(node("p",`Pickup and return address: ${user.address}\nLeave it here: ${user.deliveryInstructions||"Hand directly to me if available."}\nWe calculate the distance from 307 Locust Street automatically.`,{class:"note"}));
     }
     const rush = check(d, "Ask about rush service (approval required)");
     button(d, "Next: review order", () => {
-      const miles=service==="full_service"?Number(distanceMiles.value):0;
-      if(service==="full_service"&&(pickupAddress.value.trim().length<5||returnAddress.value.trim().length<5||!Number.isFinite(miles)||miles<0||miles>100))throw Error("Enter both addresses and a distance from 0 to 100 miles.");
-      const mileageFee=service==="full_service"?Math.max(0,miles-5):0;
+      if(service==="full_service"&&!user.address)throw Error("Add your home or camper address in My profile first.");
       main.replaceChildren();
       const review = card(
         "🌿",
@@ -971,20 +971,19 @@ async function book() {
       review.append(
         node(
           "p",
-          `We round the measured weight up to the next ½ lb. Approved rush would add $${Number(prices.rushPerLb).toFixed(2)}/lb.${service==="full_service"?` Distance: ${miles.toFixed(1)} miles · delivery fee: $${mileageFee.toFixed(2)} (first 5 miles free, then $1/mile).`:""} No payment is taken here.`,
+          `We round the measured weight up to the next ½ lb. Approved rush would add $${Number(prices.rushPerLb).toFixed(2)}/lb.${service==="full_service"?` We calculate the distance from the shop to ${user.address}. The first 5 miles are free, then $1 per mile.`:""} No payment is taken here.`,
           { class: "note" },
         ),
       );
       button(review, "Book this order", async () => {
-        await api("/api/orders", {
+        const booked=await api("/api/orders", {
           service,
           detergent: detergent.value,
           rush_requested: rush.checked,
-          ...(service==="full_service"?{pickupAddress:pickupAddress.value,returnAddress:returnAddress.value,distanceMiles:miles}:{}),
         });
         await route("orders");
         message(
-          service==="full_service"?"Delivery order booked. Approved contractors can now review the mileage and deadline.":"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
+          service==="full_service"?`Delivery order booked. Distance: ${Number(booked.order.delivery_miles).toFixed(1)} miles. Approved contractors can now review it.`:"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
         );
       });
       button(review, "Start again", () => route("book"), true);
@@ -994,17 +993,18 @@ async function book() {
 }
 async function profile() {
   const me=await api("/api/me");user=me.user;
-  const complete=Boolean(user.displayName&&user.phone?.length>=7&&user.email);
+  const complete=Boolean(user.displayName&&user.phone?.length>=7&&user.email&&(user.role!=="customer"||user.address));
   const showEditor=()=>{
     reset();const c=card("✎","Edit my information","Keep this current so Cotton Roots can contact you about your laundry.");
-    const name=field(c,"Name","text",user.displayName||""),phone=field(c,"Phone","tel",user.phone||""),email=field(c,"Email","email",user.email||"");
-    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
+    const name=field(c,"Name","text",user.displayName||""),phone=field(c,"Phone","tel",user.phone||""),email=field(c,"Email","email",user.email||""),address=user.role==="customer"?field(c,"Home or camper address","text",user.address||""):null,instructions=user.role==="customer"?field(c,"Where should deliveries be left?","text",user.deliveryInstructions||""):null;
+    if(address)address.autocomplete="street-address";
+    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value,...(address?{address:address.value,deliveryInstructions:instructions.value}:{})});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
     if(complete)button(c,"Cancel",()=>route("profile"),true);
   };
   if(!complete)return showEditor();
   const c=card("👤","My account",user.profileVerifiedAt?"Your contact information is complete and verified by you.":"Review everything below, then verify that it is correct.");
   c.append(node("span",user.profileVerifiedAt?"✓ Verified":"Needs verification",{class:"pill"}));
-  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Contractor"],["Name",user.displayName],["Phone",user.phone],["Email",user.email]])details.append(node("dt",label),node("dd",value));c.append(details);
+  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Contractor"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
   if(user.profileVerifiedAt)c.append(node("p",`Verified ${new Date(user.profileVerifiedAt).toLocaleString()}`,{class:"note"}));
   else button(c,"Verify my information",async()=>{const result=await api("/api/profile",{action:"verify"});user=result.user;await route("profile");message("Your information is verified.")});
   button(c,"Edit information",showEditor,true);
@@ -1784,22 +1784,27 @@ function stepLabel(action) {
   );
 }
 function timeline(parent, o) {
+  const contractor=o.assigned_contractor_name||"Washing specialist",dated=(label,at,who)=>at?`${label} · ${new Date(at).toLocaleString()}${who?` · ${who}`:""}`:label;
   const steps = o.service==="full_service"?[
-    ["Bag linked",true],
-    ["Contractor accepted",!!o.assigned_contractor_id],
-    ["Picked up",!!o.checked_out_at],
-    ["Delivered",!!o.delivered_at],
-    ["Paid",!!o.payment_verified],
-    ["Customer confirmed",!!o.picked_up_at],
+    [dated("Order booked",o.created_at,"Customer"),true],
+    [dated("Accepted",o.accepted_at,contractor),!!o.assigned_contractor_id],
+    [dated("Picked up from customer",o.checked_out_at,contractor),!!o.checked_out_at],
+    [dated("Washing completed",o.wash_completed_at,contractor),!!o.wash_completed_at],
+    [dated("Delivered to customer",o.delivered_at,contractor),!!o.delivered_at],
+    [dated("Payment confirmed",o.paid_at),!!o.payment_verified],
+    [dated("Customer confirmed receipt",o.picked_up_at,"Customer"),!!o.picked_up_at],
   ]:[
-    ["Bag linked", true],
-    ["At shop", !!o.dropped_at],
-    ["Washing", !!o.checked_out_at],
-    ["Returned", !!o.returned_at],
-    ["Paid & ready", o.payment_verified && o.ready_for_pickup],
-    ["Collected", !!o.picked_up_at],
+    [dated("Order booked",o.created_at,"Customer"),true],
+    [dated("Dropped at shop",o.dropped_at,"Customer"),!!o.dropped_at],
+    [dated("Accepted",o.accepted_at,contractor),!!o.assigned_contractor_id],
+    [dated("Picked up from shop",o.checked_out_at,contractor),!!o.checked_out_at],
+    [dated("Washing completed",o.wash_completed_at,contractor),!!o.wash_completed_at],
+    [dated("Returned to shop",o.returned_at,contractor),!!o.returned_at],
+    [dated("Payment confirmed",o.paid_at),!!o.payment_verified],
+    [dated("Collected",o.picked_up_at,"Customer"),!!o.picked_up_at],
   ];
   const details = node("details", undefined, { class: "journey" });
+  details.open=!["picked_up","cancelled"].includes(o.status);
   details.append(node("summary", "Your laundry journey"));
   const list = node("ol");
   for (const [label, done] of steps)

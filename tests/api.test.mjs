@@ -10,7 +10,7 @@ import {createApp} from '../server/app.mjs';
 
 async function harness(t) {
  const dataDir=await mkdtemp(join(tmpdir(),'cotton-api-'));
- let app=await createApp({dataDir,fixtures:true});
+ let app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>8});
  async function listen(){await new Promise(r=>app.server.listen(0,'127.0.0.1',r));}
  await listen();
  const fixtures=JSON.parse(await readFile(join(dataDir,'fixtures.json'),'utf8'));
@@ -35,7 +35,7 @@ async function harness(t) {
   clients.push(c);return c;
  }
  t.after(async()=>{await new Promise(r=>app.server.close(r));app.close?.();await rm(dataDir,{recursive:true,force:true});});
- return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
+ return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>8});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
 }
 const denied=r=>assert.ok([400,401,403,404,409,422,501,503].includes(r.status),`Expected denial, received ${r.status}: ${JSON.stringify(r.data)}`);
 async function setupOrder(h,c){
@@ -71,9 +71,9 @@ test('contractors submit their own pending login for owner approval',async t=>{
 test('customers can review, verify, and later edit their profile',async t=>{
  const h=await harness(t),customer=await h.client('customer');
  assert.equal((await customer.request('/api/profile',{method:'POST',body:{action:'verify'}})).status,400);
- const saved=await customer.request('/api/profile',{method:'POST',body:{displayName:'Kaylen Test',phone:'325-555-0199',email:'KAYLEN@example.com'}});assert.equal(saved.status,200);assert.equal(saved.data.user.email,'kaylen@example.com');assert.equal(saved.data.user.profileVerifiedAt,null);
+ const saved=await customer.request('/api/profile',{method:'POST',body:{displayName:'Kaylen Test',phone:'325-555-0199',email:'KAYLEN@example.com',address:'100 Test Street, Sweetwater, TX',deliveryInstructions:'Leave beside the front door'}});assert.equal(saved.status,200);assert.equal(saved.data.user.email,'kaylen@example.com');assert.equal(saved.data.user.address,'100 Test Street, Sweetwater, TX');assert.equal(saved.data.user.profileVerifiedAt,null);
  const verified=await customer.request('/api/profile',{method:'POST',body:{action:'verify'}});assert.equal(verified.status,200);assert.ok(verified.data.user.profileVerifiedAt);
- const edited=await customer.request('/api/profile',{method:'POST',body:{displayName:'Kaylen Test',phone:'325-555-0100',email:'kaylen@example.com'}});assert.equal(edited.status,200);assert.equal(edited.data.user.profileVerifiedAt,null);
+ const edited=await customer.request('/api/profile',{method:'POST',body:{displayName:'Kaylen Test',phone:'325-555-0100',email:'kaylen@example.com',address:'200 Test Street, Sweetwater, TX'}});assert.equal(edited.status,200);assert.equal(edited.data.user.profileVerifiedAt,null);
 });
 
 test('authentication, CSRF, roles, protected resources and disabled sensitive features',async t=>{
@@ -157,7 +157,8 @@ test('role dashboards summarize only authorized product data',async t=>{
 test('pickup and return orders protect addresses and include distance pricing',async t=>{
  const h=await harness(t),customer=await h.client('customer'),contractor=await h.client('contractor');
  assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
- const booked=await customer.request('/api/orders',{method:'POST',body:{service:'full_service',detergent:'standard',rush_requested:false,pickupAddress:'100 Test Street, Sweetwater, TX',returnAddress:'100 Test Street, Sweetwater, TX',distanceMiles:8}});assert.equal(booked.status,200);assert.equal(booked.data.order.status,'offered');assert.equal(booked.data.order.delivery_fee,3);assert.ok(booked.data.order.due_at);
+ assert.equal((await customer.request('/api/profile',{method:'POST',body:{displayName:'Delivery Test',phone:'325-555-0111',email:'delivery@example.com',address:'100 Test Street, Sweetwater, TX',deliveryInstructions:'Leave beside the porch chair'}})).status,200);
+ const booked=await customer.request('/api/orders',{method:'POST',body:{service:'full_service',detergent:'standard',rush_requested:false,pickupAddress:'forged',returnAddress:'forged',distanceMiles:0}});assert.equal(booked.status,200);assert.equal(booked.data.order.status,'offered');assert.equal(booked.data.order.delivery_fee,3);assert.equal(booked.data.order.pickup_address,'100 Test Street, Sweetwater, TX');assert.equal(booked.data.order.return_address,booked.data.order.pickup_address);assert.equal(booked.data.order.delivery_instructions,'Leave beside the porch chair');assert.ok(booked.data.order.due_at);
  let offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===booked.data.order.id);assert.equal(offer.pickup_address,undefined);assert.equal(offer.delivery_miles,8);
  assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
  assert.equal((await action(contractor,offer.id,'accept_job',{deadlineAcknowledged:true})).status,200);
@@ -166,7 +167,10 @@ test('pickup and return orders protect addresses and include distance pricing',a
  assert.equal((await action(contractor,offer.id,'wall_checkout',{stationToken:h.fixtures.stationToken})).status,409,'delivery pickup requires the bag, not the shop station');
  const picked=await action(contractor,offer.id,'wall_checkout',{bagToken:h.fixtures.bagToken});assert.equal(picked.status,200);assert.equal(picked.data.order.total,28.5);
  assert.equal((await action(contractor,offer.id,'wash_complete')).status,200);
- const delivered=await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken});assert.equal(delivered.status,200);assert.equal(delivered.data.order.status,'payment_pending');assert.ok(delivered.data.order.delivered_at);
+ assert.equal((await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken})).status,400,'delivery requires a photo');
+ const deliveryPhoto=`data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff,0xd8]),Buffer.alloc(1200)]).toString('base64')}`;
+ const delivered=await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken,deliveryPhoto});assert.equal(delivered.status,200);assert.equal(delivered.data.order.status,'payment_pending');assert.ok(delivered.data.order.delivered_at);assert.ok(delivered.data.order.delivery_photo_at);
+ const proof=await customer.request(`/api/orders/${offer.id}/delivery-proof`);assert.equal(proof.status,200);assert.match(proof.headers.get('content-type'),/^image\/jpeg/);
  assert.equal((await action(contractor,offer.id,'wall_checkin',{stationToken:h.fixtures.stationToken})).status,409);
 });
 
@@ -247,7 +251,7 @@ test('owner pricing changes are protected and new orders snapshot their rates',a
  const first={dropoff:3.25,full_service:4.5,rushPerLb:1.25,extraBag:12,contractor:1.5};
  denied(await customer.request('/api/management/pricing',{method:'POST',body:first}));
  assert.equal((await owner.request('/api/management/pricing',{method:'POST',body:{action:'set_pin',pin:'246810',confirmPin:'246810'}})).status,200);
- assert.equal((await customer.request('/api/profile',{method:'POST',body:{displayName:'Customer Name',phone:'325-555-0101',email:'customer@example.com'}})).status,200);assert.equal((await customer.request('/api/profile',{method:'POST',body:{action:'verify'}})).status,200);
+ assert.equal((await customer.request('/api/profile',{method:'POST',body:{displayName:'Customer Name',phone:'325-555-0101',email:'customer@example.com',address:'307 Test Street, Sweetwater, TX'}})).status,200);assert.equal((await customer.request('/api/profile',{method:'POST',body:{action:'verify'}})).status,200);
  denied(await owner.request('/api/management/accounts/customer',{method:'POST',body:{action:'update_profile',displayName:'Changed Name',phone:'325-555-0102',email:'changed@example.com',pin:'111111'}}));
  const profileChanged=await owner.request('/api/management/accounts/customer',{method:'POST',body:{action:'update_profile',displayName:'Changed Name',phone:'325-555-0102',email:'changed@example.com',pin:'246810'}});assert.equal(profileChanged.status,200);assert.equal(profileChanged.data.user.profileVerifiedAt,null);
  denied(await owner.request('/api/management/pricing',{method:'POST',body:{...first,pin:'111111'}}));

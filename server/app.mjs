@@ -19,7 +19,21 @@ const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const AGREEMENT_VERSION='pilot-2026-10-22-v1';
 const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1});
 const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','pilot_data'],contractor:['platform_role','independent_business','pilot_data']};
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
+const SHOP_COORDINATES={latitude:32.47095,longitude:-100.40594};
+const milesBetween=(a,b)=>{const radians=value=>value*Math.PI/180,dLat=radians(b.latitude-a.latitude),dLon=radians(b.longitude-a.longitude),lat1=radians(a.latitude),lat2=radians(b.latitude),h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))};
+async function estimateDeliveryMiles(address){
+ const signal=AbortSignal.timeout(8000),query=new URLSearchParams({address,benchmark:'Public_AR_Current',format:'json'});
+ const response=await fetch(`https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?${query}`,{headers:{Accept:'application/json'},signal});
+ if(!response.ok)throw Error('Address lookup unavailable');
+ const coordinates=(await response.json())?.result?.addressMatches?.[0]?.coordinates;if(!Number.isFinite(coordinates?.x)||!Number.isFinite(coordinates?.y))throw Error('Address not found');
+ const destination={latitude:coordinates.y,longitude:coordinates.x};
+ try{
+  const route=await fetch(`https://router.project-osrm.org/route/v1/driving/${SHOP_COORDINATES.longitude},${SHOP_COORDINATES.latitude};${destination.longitude},${destination.latitude}?overview=false`,{headers:{Accept:'application/json'},signal});
+  const meters=(await route.json())?.routes?.[0]?.distance;if(route.ok&&Number.isFinite(meters))return Number((meters/1609.344).toFixed(1));
+ }catch{}
+ return Number(milesBetween(SHOP_COORDINATES,destination).toFixed(1));
+}
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin&&privateGate){
   const url=new URL(remoteOrigin);
@@ -61,10 +75,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  if(pickupMigration)save();
  const attempts=new Map();
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
+ const proofDir=resolve(dataDir,'delivery-proofs');mkdirSync(proofDir,{recursive:true,mode:0o700});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
- const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
+ const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,...safe}=o;return safe};
  // The pilot persists one state document. Serialize requests so an awaited
  // provider call can never roll an unrelated concurrent mutation backward.
  let requestQueue=Promise.resolve();
@@ -130,7 +145,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const origin=req.headers.origin;
     if(origin&&origin!==(remoteOrigin||`http://${req.headers.host}`))fail(403,'Origin rejected');
     if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
-    let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>16384)fail(413,'Request too large');chunks.push(chunk)}
+    const bodyLimit=/^\/api\/orders\/[^/]+\/actions$/.test(path)?750000:16384;
+    let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>bodyLimit)fail(413,'Request too large');chunks.push(chunk)}
     try{body=JSON.parse(Buffer.concat(chunks).toString())}catch{fail(400,'Invalid JSON')}
     if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Object required');
    }
@@ -172,6 +188,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
    if(req.method==='GET'){
     if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
+    const proofMatch=path.match(/^\/api\/orders\/([^/]+)\/delivery-proof$/);
+    if(proofMatch){
+     const order=state.orders.find(item=>item.id===decodeURIComponent(proofMatch[1]));if(!order||!visible(order,user)||!order.delivery_proof_file)fail(404,'Delivery photo not found');
+     headers['Content-Type']=order.delivery_proof_type||'image/jpeg';headers['Cache-Control']='private, no-store';res.writeHead(200,headers);res.end(readFileSync(resolve(proofDir,order.delivery_proof_file)));return;
+    }
     if(path==='/api/dashboard'){
      if(user.role==='customer'){
       const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -192,7 +213,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      fail(403,'Dashboard unavailable');
     }
     if(path==='/api/orders')return send(200,{orders:state.orders.filter(o=>visible(o,user)).map(o=>{
-     const v=publicOrder(o);if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;if(o.assigned_contractor_id!==user.id){delete v.pickup_address;delete v.return_address}}return v;
+     const v=publicOrder(o),contractor=state.users.find(account=>account.id===o.assigned_contractor_id);if(contractor)v.assigned_contractor_name=contractor.displayName||contractor.username;
+     if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;if(o.assigned_contractor_id!==user.id){delete v.pickup_address;delete v.return_address;delete v.delivery_instructions}}return v;
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
@@ -268,14 +290,16 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      result={accessCode:boxLockCode,issuedAt:user.box_access_issued_at,reusable:true,notice:'Scan the unique QR on the bag to register it to your account.'};
     }else if(path==='/api/profile'){
      if(body.action==='verify'){
-      if(!user.displayName||!user.phone||user.phone.length<7||!user.email)fail(400,'Add your name, phone number, and email before verifying');
+      if(!user.displayName||!user.phone||user.phone.length<7||!user.email||user.role==='customer'&&!user.address)fail(400,user.role==='customer'?'Add your name, phone number, email, and service address before verifying':'Add your name, phone number, and email before verifying');
       user.profile_verified_at=new Date().toISOString();result={user:publicUser(user)};
      }else{
      const displayName=typeof body.displayName==='string'?body.displayName.trim():'';
      const phone=typeof body.phone==='string'?body.phone.trim():'';
      const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
-     if(displayName.length>80||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');
-     user.displayName=displayName;user.phone=phone;user.email=email;user.profile_verified_at=null;result={user:publicUser(user)};
+     const address=typeof body.address==='string'?body.address.trim():'';
+     const deliveryInstructions=typeof body.deliveryInstructions==='string'?body.deliveryInstructions.trim():'';
+     if(displayName.length>80||phone.length>32||email.length>128||address.length>200||deliveryInstructions.length>500||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');
+     user.displayName=displayName;user.phone=phone;user.email=email;if(user.role==='customer'){user.address=address;user.delivery_instructions=deliveryInstructions}user.profile_verified_at=null;result={user:publicUser(user)};
      }
     }else if(path==='/api/bags/exchange-request'){
      if(user.role!=='customer')fail(403,'Customer required');
@@ -306,11 +330,13 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const bag=state.bags.find(b=>b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(409,'Claim an active bag first');
      if(state.orders.some(o=>o.bag_id===bag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Bag already has an active order');
      let pickupAddress=null,returnAddress=null,distanceMiles=0,distanceCharge=0;if(body.service==='full_service'){
-      pickupAddress=typeof body.pickupAddress==='string'?body.pickupAddress.trim():'';returnAddress=typeof body.returnAddress==='string'?body.returnAddress.trim():'';distanceMiles=Number(body.distanceMiles);
-      if(pickupAddress.length<5||pickupAddress.length>200||returnAddress.length<5||returnAddress.length>200||!Number.isFinite(distanceMiles)||distanceMiles<0||distanceMiles>100)fail(400,'Enter valid pickup and return addresses and a distance from 0 to 100 miles');
+      pickupAddress=user.address||'';returnAddress=pickupAddress;
+      if(pickupAddress.length<5||pickupAddress.length>200)fail(400,'Add your pickup and return address in My profile first');
+      try{distanceMiles=await distanceLookup(pickupAddress)}catch{fail(503,'We could not calculate delivery distance. Check your profile address and try again.')}
+      if(!Number.isFinite(distanceMiles)||distanceMiles<0||distanceMiles>100)fail(400,'Delivery address must be within 100 miles of the shop');
       distanceCharge=deliveryFee(distanceMiles);
      }
-     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:body.service==='full_service'?'offered':'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,delivery_free_miles:5,delivery_rate_per_mile:1,delivery_miles:distanceMiles,delivery_fee:distanceCharge,pickup_address:pickupAddress,return_address:returnAddress,created_at:new Date().toISOString(),due_at:body.service==='full_service'?shopDueDeadline():null,due_note:body.service==='full_service'?SHOP_DUE_NOTE:'Deadline is set from the verified shop drop-off time.'};
+     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:body.service==='full_service'?'offered':'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,delivery_free_miles:5,delivery_rate_per_mile:1,delivery_miles:distanceMiles,delivery_fee:distanceCharge,pickup_address:pickupAddress,return_address:returnAddress,delivery_instructions:body.service==='full_service'?(user.delivery_instructions||'Hand directly to customer if available.'):null,created_at:new Date().toISOString(),due_at:body.service==='full_service'?shopDueDeadline():null,due_note:body.service==='full_service'?SHOP_DUE_NOTE:'Deadline is set from the verified shop drop-off time.'};
      state.orders.push(order);result={order};
     }else if(path==='/api/availability'){
      if(user.role!=='contractor')fail(403,'Contractor required');
@@ -400,8 +426,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      }else{
       if(action===ACTION.WEIGH&&(typeof body.measuredPounds!=='number'||body.measuredPounds>200))fail(400,'Weight must be at most 200 lb');
       if(action===ACTION.WASH_COMPLETE&&o.wash_completed_at||action===ACTION.RETURN_BAG&&o.return_bag_scanned_at)fail(409,'Scan already recorded');
+      let deliveryProof=null;if(action===ACTION.RETURN_BAG&&o.service==='full_service'){
+       const match=typeof body.deliveryPhoto==='string'&&body.deliveryPhoto.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/);if(!match)fail(400,'Take a delivery photo before completing the return');
+       const bytes=Buffer.from(match[2],'base64');if(bytes.length<1000||bytes.length>500000)fail(400,'Delivery photo must be between 1 KB and 500 KB');
+       if(match[1]==='image/jpeg'&&!(bytes[0]===0xff&&bytes[1]===0xd8)||match[1]==='image/png'&&!(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47))fail(400,'Invalid delivery photo');
+       deliveryProof={bytes,type:match[1],file:`${token()}.${match[1]==='image/png'?'png':'jpg'}`};
+      }
       let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
       if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
+      if(deliveryProof){writeFileSync(resolve(proofDir,deliveryProof.file),deliveryProof.bytes,{mode:0o600});updated.delivery_proof_file=deliveryProof.file;updated.delivery_proof_type=deliveryProof.type;updated.delivery_photo_at=new Date().toISOString()}
       if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved,{dropoff:updated.customer_rate_per_lb??DEFAULT_PRICING.dropoff,full_service:updated.customer_rate_per_lb??DEFAULT_PRICING.full_service,rushPerLb:updated.rush_rate_per_lb??DEFAULT_PRICING.rushPerLb},updated.delivery_fee||0);
       state.orders[index]=updated;result={order:publicOrder(updated)};
      }
