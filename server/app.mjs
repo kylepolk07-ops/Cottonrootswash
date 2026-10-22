@@ -222,6 +222,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='contractor')fail(403,'Contractor required');
      if(!Array.isArray(body.days)||body.days.length>14||!body.days.every(d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d))||!['both','dropoff','full_service'].includes(body.preference))fail(400,'Invalid availability');
      user.days=[...new Set(body.days)];user.preference=body.preference;result={days:user.days,preference:user.preference};
+    }else if(path==='/api/management/accounts'){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     const username=typeof body.username==='string'?body.username.trim().toLowerCase():'';
+     const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';
+     if(!['customer','contractor'].includes(body.role)||!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(username))fail(400,'Use a username with 3–32 lowercase letters, numbers, dashes, or underscores');
+     if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');
+     if(state.users.some(account=>account.username===username))fail(409,'That username is already in use');
+     const salt=token(),account={id:token().slice(0,24),username,role:body.role,salt,passwordHash:scryptSync(temporaryPassword,salt,64).toString('hex'),approved:body.role==='customer',days:[],preference:'both',created_at:new Date().toISOString(),pilot:true};
+     state.users.push(account);result={user:publicUser(account),temporaryPassword};
     }else if(path==='/api/management/approve'){
      if(!staff(user))fail(403,'Management access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');applicant.approved=true;result={user:publicUser(applicant)};
     }else if(/^\/api\/orders\/[^/]+\/actions$/.test(path)){
