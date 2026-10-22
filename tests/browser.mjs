@@ -38,7 +38,7 @@ try{
  await page.reload();await click('My laundry');await heading('Your laundry, step by step');await page.getByLabel('Laundry status',{exact:true}).waitFor();await page.getByRole('button',{name:'Refresh status',exact:true}).waitFor();assert.equal(await page.getByText('At the shop',{exact:true}).count(),1);
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await page.screenshot({path:resolve(shotDir,'customer-mobile.png'),fullPage:true});
- await click('Sign out');await login('contractor','contractor');assert.equal(await page.locator('header').getByText('contractor',{exact:true}).count(),1);assert.equal(await page.locator('body').getAttribute('data-session-role'),'contractor');await click('Availability');
+ await click('Sign out');await page.goto(base+'/');await heading('How will you use Cotton Roots?');await login('contractor','contractor');assert.equal(await page.locator('header').getByText('contractor',{exact:true}).count(),1);assert.equal(await page.locator('body').getAttribute('data-session-role'),'contractor');await click('Availability');
  const now=new Date(),dateLabel=now.toLocaleDateString('en-US',{timeZone:'America/Chicago',weekday:'short',month:'short',day:'numeric'});
  await page.getByLabel(dateLabel,{exact:true}).check();await click('Save availability');await page.getByRole('status').filter({hasText:'Availability saved.'}).waitFor();
  await click('Offers');await click('Review this offer');await page.getByLabel('I can meet this deadline.').check();await click('Confirm this step');await click('Scan bag & weigh');

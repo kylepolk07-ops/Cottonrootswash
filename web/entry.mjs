@@ -9,12 +9,10 @@ if(choosing){
  try{localStorage.removeItem(preferenceKey)}catch{}
  history.replaceState(null,'','/');
 }else{
- let directed=false;
  try{
   const response=await fetch('/api/me',{credentials:'same-origin',headers:{Accept:'application/json'}});
-  if(response.ok){const data=await response.json(),next=destination(data.user);if(next){remember(data.user.role==='customer'?'customer':'contractor');directed=true;location.replace(next)}}
+  if(response.ok){const data=await response.json(),next=destination(data.user);if(next){remember(data.user.role==='customer'?'customer':'contractor');location.replace(next)}}
  }catch{}
- if(!directed){try{const remembered=localStorage.getItem(preferenceKey);if(choices.has(remembered))location.replace(`/${remembered}`)}catch{}}
 }
 
 for(const link of document.querySelectorAll('.role-continue[data-role]')){
