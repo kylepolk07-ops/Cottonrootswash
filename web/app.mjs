@@ -1372,6 +1372,31 @@ function editManagedAccount(account) {
     });
     route("management");
   });
+  if (account.role === "contractor" && !account.approved) {
+    const review = node("div", undefined, { class: "bag-card" });
+    review.append(
+      node("h3", "Contractor approval"),
+      node(
+        "p",
+        "Approve only after you have spoken with this contractor and met them at the shop.",
+        { class: "muted" },
+      ),
+    );
+    const phoneConfirmed = check(review, "I spoke with this contractor by phone."),
+      inPersonConfirmed = check(review, "I met this contractor in person at the shop.");
+    button(review, "Approve contractor", async () => {
+      if (!phoneConfirmed.checked || !inPersonConfirmed.checked)
+        throw Error("Complete both contractor review steps first.");
+      await api("/api/management/approve", {
+        userId: account.id,
+        phoneConfirmed: true,
+        inPersonConfirmed: true,
+      });
+      await route("management");
+      message("Contractor approved.");
+    });
+    c.append(review);
+  }
   if (account.id !== user.id)
     button(
       c,
@@ -1461,24 +1486,18 @@ function accountTable(data, role) {
         .join(" · ") || "—",
       account.active === false
         ? "Paused"
-        : account.approved
+        : role === "customer"
           ? "Active"
-          : "Needs approval",
+          : account.approved
+            ? "Approved"
+            : "Pending review",
       bag?.id || "—",
     ])
       tr.append(node("td", value));
     const actions = node("td");
     button(actions, "Edit", () => editManagedAccount(account), true);
     if (role === "contractor" && !account.approved)
-      button(
-        actions,
-        "Approve",
-        async () => {
-          await api("/api/management/approve", { userId: account.id });
-          route("management");
-        },
-        true,
-      );
+      button(actions, "Review", () => editManagedAccount(account), true);
     tr.append(actions);
     body.append(tr);
   }

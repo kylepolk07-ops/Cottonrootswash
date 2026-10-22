@@ -99,6 +99,9 @@ test('management bag labels, exchanges and account controls fail safely',async t
  assert.equal((await owner.request(`/api/management/accounts/${unused.data.user.id}`,{method:'POST',body:{action:'delete_account'}})).status,200);
  const deletedLogin=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'unused-test',password:unusedPassword})});assert.equal(deletedLogin.status,401);
  assert.equal((await owner.request('/api/management/accounts/customer',{method:'POST',body:{action:'delete_account'}})).status,409,'account history must be preserved');
+ const contractor=await owner.request('/api/management/accounts',{method:'POST',body:{role:'contractor',username:'review-test',temporaryPassword:'contractor-review-pass'}});assert.equal(contractor.status,200);assert.equal(contractor.data.user.approved,false);
+ assert.equal((await owner.request('/api/management/approve',{method:'POST',body:{userId:contractor.data.user.id}})).status,400);
+ const approved=await owner.request('/api/management/approve',{method:'POST',body:{userId:contractor.data.user.id,phoneConfirmed:true,inPersonConfirmed:true}});assert.equal(approved.status,200);assert.equal(approved.data.user.approved,true);
 });
 
 test('role dashboards summarize only authorized product data',async t=>{
