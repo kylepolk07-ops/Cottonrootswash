@@ -222,6 +222,7 @@ async function scanField(parent, title) {
   return input;
 }
 function login() {
+  delete document.body.dataset.sessionRole;
   reset();
   const c = card(
     "🌿",
@@ -287,6 +288,7 @@ function contractorApplication(){
 }
 async function render() {
   if (!user) return login();
+  document.body.dataset.sessionRole=user.role;
   if (
     ["customer", "contractor"].includes(user.role) &&
     agreementVersion &&
@@ -345,6 +347,9 @@ async function render() {
   }
   const account = node("div", undefined, { class: "account-action" });
   document.querySelector("header").append(account);
+  const identity=node("div",undefined,{class:"signed-in-as"});
+  identity.append(node("small","SIGNED IN AS"),node("strong",user.displayName||user.username),node("span",user.role==="contractor"?"Contractor":user.role==="customer"?"Customer":"Management"));
+  account.append(identity);
   button(
     account,
     "Sign out",
@@ -352,6 +357,7 @@ async function render() {
       await api("/api/logout", {});
       user = null;
       csrf = null;
+      delete document.body.dataset.sessionRole;
       page = "home";
       login();
       message("You are signed out.");

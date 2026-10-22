@@ -23,6 +23,7 @@ const login=async(name,app)=>{await page.goto(base+'/'+app);const a=fixtures.acc
 const heading=t=>page.getByRole('heading',{name:t,exact:true}).waitFor();
 try{
  await login('customer','customer');
+ assert.equal(await page.locator('header').getByText('customer',{exact:true}).count(),1);assert.equal(await page.locator('body').getAttribute('data-session-role'),'customer');
  await click('Profile');await page.getByLabel('Name',{exact:true}).fill('Customer Test');await page.getByLabel('Phone',{exact:true}).fill('325-555-0101');await page.getByLabel('Email',{exact:true}).fill('customer@example.com');await click('Save and review');await page.getByRole('button',{name:'Verify my information',exact:true}).waitFor();await click('Verify my information');await page.getByText('✓ Verified',{exact:true}).waitFor();await page.getByRole('button',{name:'Edit information',exact:true}).waitFor();
  await click('My bags');await click('Scan and register my bag');
  assert.equal(await page.locator('input[data-scan-title]:visible').count(),0,'QR tokens must not have a visible typing field');
@@ -35,7 +36,7 @@ try{
  await page.reload();await click('My laundry');await heading('Your laundry, step by step');await page.getByLabel('Laundry status',{exact:true}).waitFor();await page.getByRole('button',{name:'Refresh status',exact:true}).waitFor();assert.equal(await page.getByText('At the shop',{exact:true}).count(),1);
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await page.screenshot({path:resolve(shotDir,'customer-mobile.png'),fullPage:true});
- await click('Sign out');await login('contractor','contractor');await click('Availability');
+ await click('Sign out');await login('contractor','contractor');assert.equal(await page.locator('header').getByText('contractor',{exact:true}).count(),1);assert.equal(await page.locator('body').getAttribute('data-session-role'),'contractor');await click('Availability');
  const now=new Date(),dateLabel=now.toLocaleDateString('en-US',{timeZone:'America/Chicago',weekday:'short',month:'short',day:'numeric'});
  await page.getByLabel(dateLabel,{exact:true}).check();await click('Save availability');await page.getByRole('status').filter({hasText:'Availability saved.'}).waitFor();
  await click('Offers');await click('Review this offer');await page.getByLabel('I can meet this deadline.').check();await click('Confirm this step');await click('Scan bag & weigh');
