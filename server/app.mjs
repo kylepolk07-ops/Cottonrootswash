@@ -42,6 +42,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  state.complaints??=[];
  state.pricing??={...DEFAULT_PRICING};
  state.pricingHistory??=[];state.notices??=[];state.pricingPin??=null;
+ state.businessCosts??=[];
  state.paymentEvents??=[];
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
  if(!row && fixtures){
@@ -215,7 +216,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      return send(200,{complaints:state.complaints.filter(item=>item.customer_id===user.id)});
     }
     if(path==='/api/notices')return send(200,{notices:state.notices.slice(-10).reverse()});
-    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),audit:state.audit})}
+    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),businessCosts:state.businessCosts.slice().reverse(),audit:state.audit})}
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
@@ -238,7 +239,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const baseAmountCents=Math.round(Number(order.total)*100);if(!Number.isSafeInteger(baseAmountCents)||baseAmountCents<=0)fail(409,'Verified order total required');
      const pricing=estimateStripeTestCharge(baseAmountCents,payment);
      const providerIdempotencyKey=hash(`stripe-test:${user.id}:${order.id}:${requestKey}`);
-     const checkout=await createStripeTestCheckout({config:payment,orderId:order.id,customerId:user.id,amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
+     const checkout=await createStripeTestCheckout({config:payment,orderId:order.id,customerId:user.id,customerEmail:user.email||'',amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
      order.stripe_checkout_session_id=checkout.sessionId;order.stripe_checkout_base_cents=pricing.baseAmountCents;order.stripe_checkout_fee_cents=pricing.estimatedFeeCents;order.stripe_checkout_total_cents=pricing.totalCents;
      result={order:publicOrder(order),checkoutUrl:checkout.checkoutUrl,pricing:{currency:'USD',laundrySubtotalCents:pricing.baseAmountCents,estimatedOnlinePaymentCostCents:pricing.estimatedFeeCents,testTotalCents:pricing.totalCents,estimateOnly:true}};
     }else if(path==='/api/bag-box/access'){
@@ -330,6 +331,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      state.notices.push({id:token().slice(0,24),type:'pricing',effective_at:effectiveAt,created_at:effectiveAt,title:'Pricing update',pricing:{...next},message:'New pricing is now effective. Existing booked orders keep their original rates.'});
      result={pricing:state.pricing,effectiveAt};
      }
+    }else if(path==='/api/management/costs'){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     if(body.action==='add'){
+      const description=typeof body.description==='string'?body.description.trim():'',category=typeof body.category==='string'?body.category:'',date=typeof body.date==='string'?body.date:'';
+      const amount=Number(body.amount);if(description.length<2||description.length>100||!['supplies','rent','utilities','software','marketing','other'].includes(category)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(amount)||amount<=0||amount>100000||Math.abs(amount*100-Math.round(amount*100))>1e-8)fail(400,'Check the cost description, category, date, and amount');
+      const cost={id:token().slice(0,24),description,category,date,amount,created_at:new Date().toISOString(),created_by:user.id};state.businessCosts.push(cost);result={cost};
+     }else if(body.action==='delete'){
+      const index=state.businessCosts.findIndex(item=>item.id===body.id);if(index<0)fail(404,'Cost not found');const [cost]=state.businessCosts.splice(index,1);result={deleted:true,costId:cost.id};
+     }else fail(400,'Unsupported cost action');
     }else if(/^\/api\/management\/complaints\/[^/]+$/.test(path)){
      if(!staff(user))fail(403,'Management access required');
      const complaint=state.complaints.find(item=>item.id===path.split('/').at(-1));if(!complaint)fail(404,'Complaint not found');

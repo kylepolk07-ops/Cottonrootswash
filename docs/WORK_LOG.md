@@ -37,6 +37,12 @@ Lead `/root` added **Management → Pricing** for the shop drop-off customer rat
 
 Pricing changes now require a separate six-digit owner pricing PIN. The PIN is salted and hashed; its raw value is never returned through Management or notices. Each published change receives a server timestamp, remains in Pricing history, and creates an in-app notice for customers and contractors showing the new relevant rates and effective date. Existing booked orders retain their rate snapshots. The initial PIN is created from an already authenticated Owner session; this is a confirmation control for the private pilot, not production MFA.
 
+## 2026-10-22 — contractor payout summaries, costs, and profit estimate
+
+Lead `/root` reorganized **Management → Money** around contractor totals and a clear staging profit estimate. It groups returned jobs per contractor and shows pounds, earned amount, amount ready after verified customer payment, and amount still waiting. The summary calculates verified customer revenue minus contractor earnings on returned work and owner-entered business costs. Owners can record or delete dated categorized costs; validation, authorization, persistence, restart, and deletion are covered by tests. The screen is explicitly an estimate: it does not send payouts or assert settlement while real payment providers remain disabled.
+
+Stripe-hosted test checkout now receives the authenticated customer's validated profile email and is labeled **Pay securely with card or Link**. When Link is enabled in the owner's Stripe Payment Methods settings, Stripe can recognize a returning customer and reuse their Link wallet after Stripe's verification, avoiding repeated card entry. Cotton Roots never receives or stores the card number. Live charging remains disabled and requires separate owner authorization and provider verification.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |

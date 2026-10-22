@@ -32,8 +32,9 @@ test('Stripe signature binds timestamp and exact raw body with a short replay wi
 test('hosted Stripe test checkout sends trusted amount and accepts only Stripe test URLs',async()=>{
  let request;
  const fetchImpl=async(url,options)=>{request={url,options};return {ok:true,json:async()=>({id:'cs_test_synthetic',url:'https://checkout.stripe.com/c/pay/cs_test_synthetic'})}};
- const result=await createStripeTestCheckout({config,orderId:'order-1',customerId:'customer',amountCents:3125,idempotencyKey:'checkout-order-1',fetchImpl});
+ const result=await createStripeTestCheckout({config,orderId:'order-1',customerId:'customer',customerEmail:'customer@example.com',amountCents:3125,idempotencyKey:'checkout-order-1',fetchImpl});
  assert.equal(result.amountCents,3125);assert.equal(request.url,'https://api.stripe.com/v1/checkout/sessions');assert.equal(request.options.headers.Authorization,`Bearer ${secretKey}`);assert.equal(request.options.headers['Idempotency-Key'],'checkout-order-1');
+ assert.equal(new URLSearchParams(request.options.body).get('customer_email'),'customer@example.com');
  const form=new URLSearchParams(request.options.body);assert.equal(form.get('mode'),'payment');assert.equal(form.get('line_items[0][price_data][unit_amount]'),'3125');assert.equal(form.get('metadata[customer_id]'),'customer');assert.ok(!request.options.body.toString().includes(secretKey));
  await assert.rejects(()=>createStripeTestCheckout({config,orderId:'order-1',customerId:'customer',amountCents:3125,idempotencyKey:'checkout-order-1',fetchImpl:async()=>({ok:true,json:async()=>({id:'cs_live_bad',url:'https://attacker.example'})})}));
 });

@@ -209,3 +209,13 @@ test('owner pricing changes are protected and new orders snapshot their rates',a
  const management=(await owner.request('/api/management')).data;assert.deepEqual(management.pricing,second);assert.equal(management.pricingPinSet,true);assert.equal(JSON.stringify(management).includes('246810'),false);
  const notices=(await customer.request('/api/notices')).data.notices;assert.equal(notices[0].type,'pricing');assert.deepEqual(notices[0].pricing,second);
 });
+
+test('owner business costs are validated, private and persistent',async t=>{
+ const h=await harness(t),customer=await h.client('customer'),owner=await h.client('owner'),cost={action:'add',description:'Laundry supplies',category:'supplies',date:'2026-10-22',amount:24.75};
+ denied(await customer.request('/api/management/costs',{method:'POST',body:cost}));
+ denied(await owner.request('/api/management/costs',{method:'POST',body:{...cost,amount:-1}}));
+ const added=await owner.request('/api/management/costs',{method:'POST',body:cost});assert.equal(added.status,200);assert.equal(added.data.cost.amount,24.75);
+ assert.equal((await owner.request('/api/management')).data.businessCosts.length,1);
+ await h.restart();const restored=await h.client('owner');const saved=(await restored.request('/api/management')).data.businessCosts;assert.equal(saved[0].description,'Laundry supplies');
+ assert.equal((await restored.request('/api/management/costs',{method:'POST',body:{action:'delete',id:saved[0].id}})).status,200);assert.equal((await restored.request('/api/management')).data.businessCosts.length,0);
+});

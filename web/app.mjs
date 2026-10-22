@@ -1,4 +1,4 @@
-import { availabilityDays } from "/web/calendar.mjs";
+import { availabilityDays, shopDateKey } from "/web/calendar.mjs";
 const app = document.body.dataset.app,
   main = document.querySelector("#main"),
   nav = document.querySelector("#nav"),
@@ -515,7 +515,7 @@ function addTestCheckout(card, o) {
       { class: "note" },
     ),
   );
-  button(card, "Open Stripe test checkout", async () => {
+  button(card, "Pay securely with card or Link", async () => {
     const result = await api("/api/payments/checkout", { orderId: o.id });
     if (result.pricing?.estimateOnly !== true)
       throw Error("Test payment estimate missing.");
@@ -1359,18 +1359,17 @@ function managementBack(parent) {
   }, true);
 }
 function moneyManagement(data) {
-  const c = card("💵", "Money", "Test-mode ledger only. No contractor payout is sent from this screen.");
+  const c = card("💵", "Money", "Staging estimate only. No contractor payout or real money is sent from this screen.");
   managementBack(c);
   const jobs = (data.orders || []).filter((o) => o.assigned_contractor_id);
-  const wrap = node("div", undefined, { class: "table-wrap" }), table = node("table"), head = node("thead"), row = node("tr");
-  for (const label of ["Job", "Contractor", "Customer payment", "Contractor amount", "Payout status"]) row.append(node("th", label));
-  head.append(row); table.append(head); const body = node("tbody");
-  for (const order of jobs) {
-    const tr = node("tr"), amount = Number(order.billed_pounds || 0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1);
-    for (const value of [order.id, order.assigned_contractor_id, order.payment_verified ? "Verified" : "Waiting", `$${amount.toFixed(2)}`, order.payment_verified && order.returned_at ? "Ready for approval" : "Not ready"]) tr.append(node("td", value));
-    body.append(tr);
-  }
-  table.append(body); wrap.append(table); c.append(wrap);
+  const completed=jobs.filter(order=>order.returned_at),contractorPay=completed.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),revenue=(data.orders||[]).filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.total||0),0),costs=(data.businessCosts||[]).reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
+  const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Contractor earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
+  c.append(node("p","Estimated profit = verified customer payments − contractor earnings on returned work − costs entered below.",{class:"note"}),node("h3","Contractor payouts"));
+  const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Contractor","Returned jobs","Pounds","Earned","Ready","Waiting"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
+  for(const contractor of contractors){const mine=completed.filter(order=>order.assigned_contractor_id===contractor.id),earned=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),ready=mine.filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),pounds=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0),0),tr=node("tr");for(const value of [contractor.displayName||contractor.username,mine.length,pounds.toFixed(1),`$${earned.toFixed(2)}`,`$${ready.toFixed(2)}`,`$${(earned-ready).toFixed(2)}`])tr.append(node("td",value));body.append(tr)}table.append(body);wrap.append(table);c.append(wrap);
+  c.append(node("h3","Enter a business cost"));const description=field(c,"Description","text"),category=select(c,"Category",[["supplies","Supplies"],["rent","Rent"],["utilities","Utilities"],["software","Software"],["marketing","Marketing"],["other","Other"]]),date=field(c,"Date","date",shopDateKey()),amount=field(c,"Amount","number");amount.min="0.01";amount.max="100000";amount.step="0.01";
+  button(c,"Add cost",async()=>{await api("/api/management/costs",{action:"add",description:description.value,category:category.value,date:date.value,amount:Number(amount.value)});await route("management");message("Business cost added.")});
+  c.append(node("h3","Recorded costs"));if(!(data.businessCosts||[]).length)c.append(node("p","No business costs entered yet.",{class:"muted"}));for(const cost of data.businessCosts||[]){const row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${cost.description} · $${Number(cost.amount).toFixed(2)}`),node("p",`${cost.category} · ${cost.date}`,{class:"muted"}));button(row,"Delete cost",async()=>{if(!confirm(`Delete ${cost.description}?`))return;await api("/api/management/costs",{action:"delete",id:cost.id});await route("management");message("Business cost deleted.")},true);c.append(row)}
 }
 async function managementTestTools() {
   const kit = await api("/api/management/test-kit"), c = card("🧪", "Pilot tools", "Synthetic QR and station codes for private testing only.");

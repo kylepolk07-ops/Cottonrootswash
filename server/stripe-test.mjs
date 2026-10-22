@@ -37,13 +37,14 @@ function trustedCheckout({orderId,customerId,amountCents,currency='USD'}){
  return {orderId,customerId,amountCents,currency};
 }
 
-export async function createStripeTestCheckout({config,orderId,customerId,amountCents,estimatedFeeCents=0,currency='USD',idempotencyKey,fetchImpl=fetch}){
+export async function createStripeTestCheckout({config,orderId,customerId,customerEmail='',amountCents,estimatedFeeCents=0,currency='USD',idempotencyKey,fetchImpl=fetch}){
  if(config?.provider!=='stripe'||config.mode!=='test'||!/^(?:sk|rk)_test_\S{8,}$/.test(config.secretKey))throw Error('Stripe test configuration required');
  const trusted=trustedCheckout({orderId,customerId,amountCents,currency});
  if(typeof idempotencyKey!=='string'||idempotencyKey.length<8||idempotencyKey.length>128)throw Error('Idempotency key required');
  if(!Number.isSafeInteger(estimatedFeeCents)||estimatedFeeCents<0||estimatedFeeCents>=trusted.amountCents)throw Error('Valid test payment cost estimate required');
  const subtotalCents=trusted.amountCents-estimatedFeeCents;
  const form=new URLSearchParams({mode:'payment',success_url:`${config.origin}/customer?checkout=success`,cancel_url:`${config.origin}/customer?checkout=cancel`,client_reference_id:trusted.orderId,'metadata[order_id]':trusted.orderId,'metadata[customer_id]':trusted.customerId,'line_items[0][quantity]':'1','line_items[0][price_data][currency]':'usd','line_items[0][price_data][unit_amount]':String(subtotalCents),'line_items[0][price_data][product_data][name]':`Cotton Roots laundry order ${trusted.orderId}`});
+ if(customerEmail){if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||customerEmail.length>128)throw Error('Valid customer email required');form.set('customer_email',customerEmail)}
  if(estimatedFeeCents){form.set('line_items[1][quantity]','1');form.set('line_items[1][price_data][currency]','usd');form.set('line_items[1][price_data][unit_amount]',String(estimatedFeeCents));form.set('line_items[1][price_data][product_data][name]','Estimated online payment cost · TEST MODE')}
  const response=await fetchImpl(API,{method:'POST',headers:{Authorization:`Bearer ${config.secretKey}`,'Content-Type':'application/x-www-form-urlencoded','Idempotency-Key':idempotencyKey},body:form});
  let data;try{data=await response.json()}catch{throw Error('Stripe test mode returned an invalid response')}
