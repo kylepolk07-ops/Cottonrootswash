@@ -47,7 +47,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
  }
  const sessions=new Map(),attempts=new Map();
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||''});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
@@ -126,7 +126,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const trialCandidate=scryptSync(String(body.password||'').slice(0,256),'crc-disposable-trial',64);
     const trialExpected=scryptSync(stagingPassword||'unavailable','crc-disposable-trial',64);
     const trialMatch=disposable&&Boolean(u)&&['customer','contractor'].includes(u.role)&&timingSafeEqual(trialCandidate,trialExpected);
-    if(!storedMatch&&!trialMatch)fail(401,'Invalid credentials');
+    if(!storedMatch&&!trialMatch||u?.active===false)fail(401,'Invalid credentials');
     for(const [key,value] of sessions)if(value.expires<now)sessions.delete(key);
     if(sessions.size>=1000)fail(429,'Session capacity reached');
     const sid=token(),csrf=token();sessions.set(hash(sid),{userId:u.id,csrf,expires:now+8*3600000});
@@ -160,7 +160,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(path==='/api/orders')return send(200,{orders:state.orders.filter(o=>visible(o,user)).map(o=>{
      const v=publicOrder(o);if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;}return v;
     })});
-    if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id).map(({token,...b})=>b)});
+    if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
     if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>({order_id:o.id,pounds:o.billed_pounds,amount:o.billed_pounds,status:'pending',note:'No payments or payouts connected'}))});
     if(path==='/api/management/test-kit/bag-qr'){
@@ -174,7 +174,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      return send(200,{synthetic:true,bagToken:state.bags[0]?.token,stationToken:state.stationToken});
     }
-    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),orders:state.orders.map(publicOrder),audit:state.audit})}
+    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(publicOrder),audit:state.audit})}
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
@@ -200,6 +200,16 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(!boxLockCode)fail(503,'Bag box access is not configured');
      user.box_access_issued_at??=new Date().toISOString();
      result={accessCode:boxLockCode,issuedAt:user.box_access_issued_at,reusable:true,notice:'Scan the unique QR on the bag to register it to your account.'};
+    }else if(path==='/api/profile'){
+     const displayName=typeof body.displayName==='string'?body.displayName.trim():'';
+     const phone=typeof body.phone==='string'?body.phone.trim():'';
+     const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
+     if(displayName.length>80||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');
+     user.displayName=displayName;user.phone=phone;user.email=email;result={user:publicUser(user)};
+    }else if(path==='/api/bags/exchange-request'){
+     if(user.role!=='customer')fail(403,'Customer required');
+     const bag=state.bags.find(b=>b.id===body.bagId&&b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(404,'Bag not found');
+     bag.exchange_requested_at??=new Date().toISOString();result={bag:{id:bag.id,exchange_requested_at:bag.exchange_requested_at}};
     }else if(path==='/api/claim'){
      if(user.role!=='customer')fail(403,'Customer required');
      const bag=state.bags.find(b=>b.token===body.bagToken);if(!bag)fail(409,'Bag unavailable');
@@ -231,6 +241,16 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(state.users.some(account=>account.username===username))fail(409,'That username is already in use');
      const salt=token(),account={id:token().slice(0,24),username,role:body.role,salt,passwordHash:scryptSync(temporaryPassword,salt,64).toString('hex'),approved:body.role==='customer',days:[],preference:'both',created_at:new Date().toISOString(),pilot:true};
      state.users.push(account);result={user:publicUser(account),temporaryPassword};
+    }else if(/^\/api\/management\/accounts\/[^/]+$/.test(path)){
+     if(user.role!=='owner')fail(403,'Owner access required');const id=path.split('/').at(-1),account=state.users.find(a=>a.id===id);if(!account)fail(404,'Account not found');
+     if(body.action==='set_active'){if(typeof body.active!=='boolean'||account.id===user.id)fail(400,'That account cannot be changed');account.active=body.active;result={user:publicUser(account)};}
+     else if(body.action==='reset_password'){const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');const salt=token();account.salt=salt;account.passwordHash=scryptSync(temporaryPassword,salt,64).toString('hex');account.password_reset_at=new Date().toISOString();result={user:publicUser(account),temporaryPassword};}
+     else fail(400,'Unsupported account action');
+    }else if(path==='/api/management/bags'){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     if(body.action==='add'){const id=typeof body.id==='string'?body.id.trim().toLowerCase():'';if(!/^bag-[a-z0-9-]{3,32}$/.test(id))fail(400,'Use a bag ID such as bag-002');if(state.bags.some(b=>b.id===id))fail(409,'That bag ID already exists');state.bags.push({id,token:token(),customer_id:null,status:'active',created_at:new Date().toISOString()});result={bag:{id,status:'active'}};}
+     else if(body.action==='exchange'){const oldBag=state.bags.find(b=>b.id===body.oldBagId&&b.customer_id),newBag=state.bags.find(b=>b.id===body.newBagId&&b.status!=='retired'&&!b.customer_id);if(!oldBag||!newBag)fail(409,'Choose a registered old bag and an available replacement bag');const customerId=oldBag.customer_id;oldBag.status='retired';oldBag.retired_at=new Date().toISOString();oldBag.replaced_by=newBag.id;oldBag.previous_customer_id=customerId;oldBag.customer_id=null;newBag.customer_id=customerId;newBag.claimed_at=new Date().toISOString();newBag.replaces=oldBag.id;result={oldBag:{id:oldBag.id,status:oldBag.status},newBag:{id:newBag.id,status:'active',customer_id:customerId}};}
+     else fail(400,'Unsupported bag action');
     }else if(path==='/api/management/approve'){
      if(!staff(user))fail(403,'Management access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');applicant.approved=true;result={user:publicUser(applicant)};
     }else if(/^\/api\/orders\/[^/]+\/actions$/.test(path)){
