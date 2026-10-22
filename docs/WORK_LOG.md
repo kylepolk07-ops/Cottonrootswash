@@ -179,3 +179,7 @@ Customer accounts are active automatically after successful account setup and re
 The main Management navigation action now always resets the selected Management workspace to Home, so an owner can leave Customers, Contractors, Bags, Money, or Pilot Tools without refreshing the browser. The existing in-workspace Management Home control remains available and is covered by the mobile browser flow.
 
 Added a transparent forest-green and antique-gold Cotton Roots basket/cotton brand mark to both served apps, with accessible alternate text and a compact mobile header treatment. Refined the private pilot's backgrounds, cards, choices, buttons, inputs, status strip, statistics, and Management tables for a consistent modern boutique presentation while preserving the large step-by-step controls.
+
+The root app now opens with an illustrated Customer-or-Contractor chooser instead of assuming Customer. Each choice has a large touch target plus an accessible information disclosure explaining the account and contractor approval process. The private gate defaults to this chooser. Individual app headers emphasize the larger Cotton Roots & Co. identity without repeating the selected role as a large heading.
+
+The physical bag tag now states that its unique QR is used to register the bag and to check it in and out, matching the custody workflow.

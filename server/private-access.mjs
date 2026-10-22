@@ -4,7 +4,7 @@ const digest=value=>createHash('sha256').update(value).digest();
 const equal=(a,b)=>timingSafeEqual(digest(a),digest(b));
 const nonce=()=>randomBytes(32).toString('hex');
 const cookie=(req,name)=>req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith(name+'='))?.slice(name.length+1)||'';
-const destination=value=>value==='/contractor'?'/contractor':'/customer';
+const destination=value=>value==='/contractor'?'/contractor':value==='/customer'?'/customer':value===undefined||value===null||value===''?'/':'/customer';
 export function createPrivateAccess({origin,username,password,now=Date.now}){
  const consumed=new Map(),sessions=new Map(),attempts=new Map();
  const signingKey=randomBytes(32);
@@ -17,7 +17,7 @@ export function createPrivateAccess({origin,username,password,now=Date.now}){
  return async function guard(req,res,headers){
   const url=new URL(req.url,origin);
   const send=(status,data)=>{res.writeHead(status,headers);res.end(data)};
-  const html=(message='',next='/customer',status=200)=>{
+  const html=(message='',next='/',status=200)=>{
    const current=cookie(req,'__Host-crc_access_csrf');
    const csrf=current&&validChallenge(current)&&!consumed.has(digest(current).toString('hex'))?current:newChallenge();
    headers['Set-Cookie']=`__Host-crc_access_csrf=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=600`;

@@ -6,6 +6,7 @@ RUN npm ci --omit=dev --ignore-scripts
 COPY --chown=node:node server ./server
 COPY --chown=node:node shared ./shared
 COPY --chown=node:node web ./web
+COPY --chown=node:node apps/index.html ./apps/index.html
 COPY --chown=node:node apps/customer/index.html ./apps/customer/index.html
 COPY --chown=node:node apps/contractor/index.html ./apps/contractor/index.html
 CMD ["node", "server/bootstrap.mjs"]
