@@ -183,3 +183,5 @@ Added a transparent forest-green and antique-gold Cotton Roots basket/cotton bra
 The root app now opens with an illustrated Customer-or-Contractor chooser instead of assuming Customer. Each choice has a large touch target plus an accessible information disclosure explaining the account and contractor approval process. The private gate defaults to this chooser. Individual app headers emphasize the larger Cotton Roots & Co. identity without repeating the selected role as a large heading.
 
 The physical bag tag now states that its unique QR is used to register the bag and to check it in and out, matching the custody workflow.
+
+API requests now retry one time with the same idempotency key when Render returns a temporary 502, 503, or 504 HTML response during a service restart. If the restart continues, the app gives a specific wait-and-retry message instead of the vague “service did not respond” error. This protects first-login agreement acceptance and other safe idempotent actions during deployment transitions.

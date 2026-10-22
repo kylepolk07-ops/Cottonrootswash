@@ -51,12 +51,19 @@ async function api(path, body) {
     };
     options.body = JSON.stringify(body);
   }
-  const r = await fetch(path, options);
-  let data;
+  let r = await fetch(path, options), data;
   try {
     data = await r.json();
   } catch {
-    throw Error("The service did not respond. Please try again.");
+    if ([502, 503, 504].includes(r.status)) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      r = await fetch(path, options);
+      try {
+        data = await r.json();
+      } catch {
+        throw Error("The private test is restarting. Wait a moment and tap again.");
+      }
+    } else throw Error("The service did not respond. Please refresh and try again.");
   }
   if (data.code === "private_access_required") {
     window.location.assign(
