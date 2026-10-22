@@ -986,14 +986,15 @@ async function profile() {
   const showEditor=()=>{
     reset();const c=card("✎","Edit my information","Keep this current so Cotton Roots can contact you about your laundry.");
     const name=field(c,"Name","text",user.displayName||""),phone=field(c,"Phone","tel",user.phone||""),email=field(c,"Email","email",user.email||""),address=user.role==="customer"?field(c,"Home or camper address","text",user.address||""):null,instructions=user.role==="customer"?field(c,"Where should deliveries be left?","text",user.deliveryInstructions||""):null;
+    let smsConsent=null;if(user.role==="customer"){const consentLabel=node("label"),consentText=node("span","Text me necessary order-status updates. Message and data rates may apply. Reply STOP to opt out." );smsConsent=node("input");smsConsent.type="checkbox";smsConsent.checked=user.smsConsent===true;consentLabel.append(smsConsent,consentText);c.append(consentLabel)}
     if(address)address.autocomplete="street-address";
-    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value,...(address?{address:address.value,deliveryInstructions:instructions.value}:{})});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
+    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value,...(address?{address:address.value,deliveryInstructions:instructions.value,smsConsent:smsConsent.checked}:{})});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
     if(complete)button(c,"Cancel",()=>route("profile"),true);
   };
   if(!complete)return showEditor();
   const c=card("👤","My account",user.profileVerifiedAt?"Your contact information is complete and verified by you.":"Review everything below, then verify that it is correct.");
   c.append(node("span",user.profileVerifiedAt?"✓ Verified":"Needs verification",{class:"pill"}));
-  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Contractor"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
+  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Contractor"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Text updates",user.smsConsent?"On":"Off"],["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
   if(user.profileVerifiedAt)c.append(node("p",`Verified ${new Date(user.profileVerifiedAt).toLocaleString()}`,{class:"note"}));
   else button(c,"Verify my information",async()=>{const result=await api("/api/profile",{action:"verify"});user=result.user;await route("profile");message("Your information is verified.")});
   button(c,"Edit information",showEditor,true);
@@ -1316,6 +1317,7 @@ function managementWorkspace(data) {
   if (managementView === "orders") return managementOrders(data);
   if (managementView === "alerts") return managementAlerts(data);
   if (managementView === "complaints") return managementComplaints(data);
+  if (managementView === "notifications") return managementNotifications(data);
   if (managementView === "pricing") return managementPricing(data);
   const c = card(
     "⚙️",
@@ -1340,6 +1342,7 @@ function managementWorkspace(data) {
     ["orders", "📦", "Orders", "Ready for pickup and completed orders"],
     ["alerts", "⏰", "Late alerts", "Due within 6 hours and overdue work"],
     ["complaints", "💬", "Customer complaints", "Review and resolve customer reports"],
+    ["notifications", "📱", "Text notifications", "Queued, sent, skipped, and failed order texts"],
     ["pricing", "🏷", "Pricing", "Customer rates, bag price, and contractor pay"],
     ["tools", "🧪", "Pilot tools", "Synthetic QR and station test codes"],
   ])
@@ -1347,6 +1350,11 @@ function managementWorkspace(data) {
       managementView = key;
       route("management");
     });
+}
+function managementNotifications(data){
+ const c=card("📱","Text notifications","Order texts appear here. Queued messages will begin sending after Twilio is configured.");managementBack(c);
+ const items=data.notifications||[];if(!items.length)c.append(node("p","No order texts have been created yet.",{class:"muted"}));
+ for(const item of items.slice(0,100)){const customer=(data.users||[]).find(user=>user.id===item.customer_id),row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${item.status.toUpperCase()} · ${customer?.displayName||customer?.username||"Customer"}`),node("p",item.body),node("p",`${item.to||"No valid number"} · ${new Date(item.created_at).toLocaleString()}${item.error?` · ${item.error}`:""}`,{class:"muted"}));if(["queued","failed"].includes(item.status))button(row,"Retry text",async()=>{await api("/api/management/notifications",{id:item.id});await route("management");message("Text retry completed.")},true);c.append(row)}
 }
 function managementPricing(data){
   const prices=data.pricing||{dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);

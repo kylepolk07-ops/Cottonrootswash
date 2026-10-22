@@ -1,5 +1,6 @@
 import {resolve} from 'node:path';
 import {stripeTestConfig} from './stripe-test.mjs';
+import {twilioConfig} from './twilio.mjs';
 export function runtimeConfig(env=process.env){
  const provider=env.CRC_DEPLOYMENT;
  const remote=['railway','render'].includes(provider);
@@ -34,5 +35,5 @@ export function runtimeConfig(env=process.env){
  }
  const payment=stripeTestConfig(env,remoteOrigin);
  if(env.CRC_BOX_LOCK_CODE!==undefined&&!/^\d{4}$/.test(env.CRC_BOX_LOCK_CODE))throw Error('Box lock code must be exactly four digits');
- return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,privateGate:!accountLoginOnly,fixturePasswords,disposable,payment,boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
+ return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,privateGate:!accountLoginOnly,fixturePasswords,disposable,payment,notifications:twilioConfig(env),boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
 }
