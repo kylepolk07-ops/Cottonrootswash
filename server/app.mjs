@@ -15,6 +15,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
+const AGREEMENT_VERSION='pilot-2026-10-22-v1';
 export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin){
@@ -40,14 +41,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  if(!row && fixtures){
   const accounts=['customer','customer2','contractor','contractor2','owner'].map(role=>{
    const password=fixturePasswords[role]||token().slice(0,24),salt=token();const id=role;
-   state.users.push({id,username:role,role:role.replace(/2$/,''),salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:role.startsWith('contractor'),days:[],preference:'both'});
+   state.users.push({id,username:role,role:role.replace(/2$/,''),salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:role.startsWith('contractor'),days:[],preference:'both',agreement_version:role==='owner'?null:AGREEMENT_VERSION,agreement_accepted_at:role==='owner'?null:new Date().toISOString()});
    return {id,username:role,role:role.replace(/2$/,''),password};
   });
   const bagToken=token();state.bags.push({id:'bag-001',token:bagToken,customer_id:null});
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
  }
  const sessions=new Map(),attempts=new Map();
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||''});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
@@ -136,8 +137,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const sid=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('crc_session='))?.slice(12);
    const session=sid&&sessions.get(hash(sid));if(!session||session.expires<Date.now())fail(401,'Sign in required');
    const user=state.users.find(u=>u.id===session.userId);if(!user)fail(401,'Sign in required');
+   const agreementRequired=['customer','contractor'].includes(user.role)&&user.agreement_version!==AGREEMENT_VERSION;
+   if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,agreement:{version:AGREEMENT_VERSION,required:agreementRequired},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
     if(path==='/api/dashboard'){
      if(user.role==='customer'){
       const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -184,7 +187,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    if(state.keys[key]){if(state.keys[key].fingerprint!==fingerprint)fail(409,'Key reused with different request');return send(200,state.keys[key].result)}
    const before=JSON.stringify(state);let result;
    try {
-    if(path==='/api/payments/checkout'){
+    if(path==='/api/agreements/accept'){
+     if(!['customer','contractor'].includes(user.role)||body.version!==AGREEMENT_VERSION||body.accepted!==true)fail(400,'All agreement conditions must be accepted');
+     user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();result={user:publicUser(user)};
+    }else if(path==='/api/payments/checkout'){
      if(payment?.provider!=='stripe'||payment.mode!=='test')fail(503,'Test payments are not configured');
      if(user.role!=='customer')fail(403,'Customer required');
      const order=state.orders.find(order=>order.id===body.orderId&&order.customer_id===user.id);if(!order)fail(404,'Order not found');
