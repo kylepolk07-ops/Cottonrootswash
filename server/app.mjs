@@ -29,7 +29,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const privateAccess=remoteOrigin?createPrivateAccess({origin:remoteOrigin,username:stagingUser,password:stagingPassword}):null;
  const cookieSecurity=remoteOrigin?'; Secure':'';
  mkdirSync(dataDir,{recursive:true,mode:0o700});
- chmodSync(dataDir,0o700);
+ try{chmodSync(dataDir,0o700)}catch(error){if(!(remoteOrigin&&dataDir==='/var/data'&&error?.code==='EPERM'))throw error}
  const db=new DatabaseSync(resolve(dataDir,'staging.sqlite'));
  chmodSync(resolve(dataDir,'staging.sqlite'),0o600);
  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
