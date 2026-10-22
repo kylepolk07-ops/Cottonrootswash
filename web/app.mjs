@@ -324,7 +324,15 @@ async function render() {
     profile: "👤",
   };
   for (const [k, t] of pages) {
-    const tab = button(nav, t, () => route(k), page !== k);
+    const tab = button(
+      nav,
+      t,
+      () => {
+        if (k === "management") managementView = "home";
+        return route(k);
+      },
+      page !== k,
+    );
     tab.dataset.icon = icons[k] || "•";
     tab.setAttribute("aria-label", t);
     if (page === k) tab.setAttribute("aria-current", "page");
