@@ -31,6 +31,14 @@ test('Render configuration fails closed and explicitly selects disposable synthe
  assert.throws(()=>runtimeConfig({...env,CRC_DEPLOYMENT:'unknown-provider'}));
 });
 
+test('Render accepts only the documented protected persistent-disk configuration',()=>{
+ const persistent={...environment(),CRC_DATA_DIR:'/var/data',RENDER_DISK_MOUNT_PATH:'/var/data',CRC_STAGING_PASSWORD:secret()};delete persistent.CRC_EPHEMERAL_TEST;
+ const c=runtimeConfig(persistent);assert.equal(c.app.dataDir,'/var/data');assert.equal(c.app.disposable,false);
+ assert.throws(()=>runtimeConfig({...persistent,CRC_STAGING_PASSWORD:'482731'}));
+ assert.throws(()=>runtimeConfig({...persistent,CRC_DATA_DIR:'/tmp/data'}));
+ assert.throws(()=>runtimeConfig({...persistent,RENDER_DISK_MOUNT_PATH:'/tmp/data'}));
+});
+
 async function harness(t){
  const env=environment(),config=runtimeConfig(env),dir=await mkdtemp(join(tmpdir(),'cotton-render-review-'));
  let app;

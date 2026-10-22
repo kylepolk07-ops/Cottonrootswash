@@ -10,13 +10,17 @@ export function runtimeConfig(env=process.env){
  if(provider==='railway'){
   if(env.RAILWAY_REPLICA_COUNT&&env.RAILWAY_REPLICA_COUNT!=='1')throw Error('SQLite staging requires one replica');
   if(env.CRC_DATA_DIR!=='/data'||env.RAILWAY_VOLUME_MOUNT_PATH!=='/data')throw Error('Attach a persistent Railway volume at /data');
- }else if(env.CRC_EPHEMERAL_TEST!=='1')throw Error('Render trial must explicitly acknowledge disposable synthetic data');
+ }
+ const renderPersistent=provider==='render'&&env.CRC_DATA_DIR==='/var/data'&&env.RENDER_DISK_MOUNT_PATH==='/var/data';
+ if(provider==='render'&&!renderPersistent&&env.CRC_EPHEMERAL_TEST!=='1')throw Error('Render trial must explicitly acknowledge disposable synthetic data, or attach the protected disk at /var/data');
+ if(provider==='render'&&!renderPersistent&&(env.CRC_DATA_DIR||env.RENDER_DISK_MOUNT_PATH))throw Error('Render persistent storage must use /var/data for both disk variables');
  const remoteOrigin=env.CRC_PUBLIC_ORIGIN||(provider==='render'?env.RENDER_EXTERNAL_URL:null);
  if(!remoteOrigin)throw Error('Set the exact HTTPS staging origin');
  const u=new URL(remoteOrigin);
  if(u.origin!==remoteOrigin||u.protocol!=='https:'||u.username||u.password)throw Error('Exact HTTPS staging origin required');
- const validStagingPassword=provider==='render'?/^\d{6}$/.test(env.CRC_STAGING_PASSWORD||'')||(env.CRC_STAGING_PASSWORD||'').length>=24:(env.CRC_STAGING_PASSWORD||'').length>=24;
- if(!env.CRC_STAGING_USER||env.CRC_STAGING_USER.includes(':')||!validStagingPassword)throw Error(provider==='render'?'Set a six-digit private preview PIN':'Set private staging credentials; password minimum 24 characters');
+ const disposable=provider==='render'&&!renderPersistent;
+ const validStagingPassword=disposable?/^\d{6}$/.test(env.CRC_STAGING_PASSWORD||'')||(env.CRC_STAGING_PASSWORD||'').length>=24:(env.CRC_STAGING_PASSWORD||'').length>=24;
+ if(!env.CRC_STAGING_USER||env.CRC_STAGING_USER.includes(':')||!validStagingPassword)throw Error(disposable?'Set a six-digit private preview PIN':'Set private staging credentials; password minimum 24 characters');
  const fixturePasswords={};
  if(provider==='render'){
   for(const [user,key] of [['customer','CRC_CUSTOMER_PASSWORD'],['contractor','CRC_CONTRACTOR_PASSWORD'],['owner','CRC_OWNER_PASSWORD']]){
@@ -26,5 +30,5 @@ export function runtimeConfig(env=process.env){
  }
  const payment=stripeTestConfig(env,remoteOrigin);
  if(env.CRC_BOX_LOCK_CODE!==undefined&&!/^\d{4}$/.test(env.CRC_BOX_LOCK_CODE))throw Error('Box lock code must be exactly four digits');
- return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,fixturePasswords,disposable:provider==='render',payment,boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
+ return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:true,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,fixturePasswords,disposable,payment,boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
 }
