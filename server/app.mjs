@@ -56,7 +56,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  }
  const attempts=new Map();
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,...safe}=o;return safe};
@@ -145,6 +145,18 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const sid=token(),csrf=token();db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);
     headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;
     send(200,{user:publicUser(u),csrf});return;
+   }
+   if(path==='/api/contractor-applications'&&req.method==='POST'){
+    const key=`application:${req.socket.remoteAddress}`,now=Date.now();let a=attempts.get(key);if(!a||now-a.at>3600000)a={count:0,at:now};attempts.set(key,a);if(++a.count>10)fail(429,'Too many applications. Try again later');
+    const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',password=typeof body.password==='string'?body.password:'',displayName=typeof body.displayName==='string'?body.displayName.trim():'',phone=typeof body.phone==='string'?body.phone.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
+    if(!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(username))fail(400,'Username must be 4–32 letters, numbers, dots, dashes, or underscores');
+    if(password.length<12||password.length>256)fail(400,'Password must be 12–256 characters');
+    if(displayName.length<2||displayName.length>80||phone.length<7||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Enter your name, phone number, and a valid email address');
+    if(body.agreed!==true)fail(400,'Agree to the contractor application conditions');
+    if(state.users.some(u=>u.username===username))fail(409,'That username is unavailable');
+    const salt=token(),createdAt=new Date().toISOString(),applicant={id:token().slice(0,24),username,role:'contractor',salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:false,active:true,displayName,phone,email,days:[],preference:'both',application_status:'pending',application_created_at:createdAt};
+    state.users.push(applicant);state.audit.push({id:token().slice(0,24),actor:applicant.id,at:createdAt,path,action:'contractor_application_submitted'});save();
+    send(201,{submitted:true,message:'Application submitted for Management review'});return;
    }
    const sid=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('crc_session='))?.slice(12);
    const session=sid&&db.prepare('SELECT user_id AS userId, csrf, expires FROM sessions WHERE id_hash=?').get(hash(sid));if(!session||session.expires<Date.now()){if(sid)db.prepare('DELETE FROM sessions WHERE id_hash=?').run(hash(sid));fail(401,'Sign in required')}
@@ -316,7 +328,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     }else if(path==='/api/management/approve'){
      if(user.role!=='owner')fail(403,'Owner access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');
      if(body.phoneConfirmed!==true||body.inPersonConfirmed!==true)fail(400,'Confirm the phone conversation and in-person shop meeting first');
-     const approvedAt=new Date().toISOString();applicant.approved=true;applicant.phone_screen_confirmed_at=approvedAt;applicant.shop_meeting_confirmed_at=approvedAt;applicant.approved_at=approvedAt;applicant.approved_by=user.id;result={user:publicUser(applicant)};
+     const approvedAt=new Date().toISOString();applicant.approved=true;applicant.application_status='approved';applicant.phone_screen_confirmed_at=approvedAt;applicant.shop_meeting_confirmed_at=approvedAt;applicant.approved_at=approvedAt;applicant.approved_by=user.id;result={user:publicUser(applicant)};
     }else if(path==='/api/management/pricing'){
      if(user.role!=='owner')fail(403,'Owner access required');
      const pin=typeof body.pin==='string'?body.pin:'';

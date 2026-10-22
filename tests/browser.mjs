@@ -47,8 +47,8 @@ try{
  await page.getByRole('button',{name:'Report a problem',exact:true}).click();await heading('Report a problem');await page.getByLabel('What is this about?').selectOption('late');await page.getByLabel('Tell us what happened').fill('This private test order needs a timing review.');await click('Send to Management');await page.getByText('Your report was sent to Management.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await click('Sign out');await login('owner','contractor');await click('Management');await heading('Management');
- for(const area of ['Customers','Contractors','Bag inventory','Money','Orders','Late alerts','Customer complaints','Pricing','Pilot tools']){
-  await page.getByRole('button',{name:new RegExp(`^${area}`)}).click();await heading(area);await click('← Management home');await heading('Management');
+ for(const [buttonName,headingName] of [['Customers','Customers'],['Contractor applications','Contractor applications & accounts'],['Bag inventory','Bag inventory'],['Money','Money'],['Orders','Orders'],['Late alerts','Late alerts'],['Customer complaints','Customer complaints'],['Pricing','Pricing'],['Pilot tools','Pilot tools']]){
+  await page.getByRole('button',{name:new RegExp(`^${buttonName}`)}).click();await heading(headingName);await click('← Management home');await heading('Management');
  }
  await page.screenshot({path:resolve(shotDir,'management-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);

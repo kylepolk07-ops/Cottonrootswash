@@ -46,6 +46,17 @@ async function setupOrder(h,c){
 }
 function action(c,id,action,extra={},key){return c.request(`/api/orders/${id}/actions`,{method:'POST',key,body:{action,...extra}})}
 
+test('contractors submit their own pending login for owner approval',async t=>{
+ const h=await harness(t),password='my-private-application-pass';
+ const invalid=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'A',phone:'1',email:'bad',username:'x',password:'short',agreed:false})});assert.equal(invalid.status,400);
+ const submitted=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true})});assert.equal(submitted.status,201);
+ const duplicate=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true})});assert.equal(duplicate.status,409);
+ const login=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'jordan.washer',password})});assert.equal(login.status,200);const session=await login.json();assert.equal(session.user.approved,false);assert.equal(session.user.applicationStatus,'pending');
+ const owner=await h.client('owner'),management=await owner.request('/api/management'),applicant=management.data.users.find(user=>user.username==='jordan.washer');assert.equal(applicant.phone,'325-555-0123');assert.equal(applicant.applicationStatus,'pending');
+ assert.equal((await owner.request('/api/management/approve',{method:'POST',body:{userId:applicant.id}})).status,400);
+ const approved=await owner.request('/api/management/approve',{method:'POST',body:{userId:applicant.id,phoneConfirmed:true,inPersonConfirmed:true}});assert.equal(approved.status,200);assert.equal(approved.data.user.applicationStatus,'approved');
+});
+
 test('authentication, CSRF, roles, protected resources and disabled sensitive features',async t=>{
  const h=await harness(t);
  assert.equal((await stat(h.dataDir)).mode&0o777,0o700);

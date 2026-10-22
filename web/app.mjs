@@ -273,6 +273,17 @@ function login() {
       submit.disabled = false;
     }
   });
+  if(app==="contractor") button(c,"Apply to be a contractor",contractorApplication,true);
+}
+function contractorApplication(){
+  reset();
+  const c=card("🧺","Apply to be a washing specialist","Create your own login. Management will call you and meet you at the shop before approving work access.");
+  const name=field(c,"Full name","text"),phone=field(c,"Phone number","tel"),email=field(c,"Email","email"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
+  username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";
+  c.append(node("p","Password must be at least 12 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
+  const agreed=check(c,"I understand this is an application and I cannot accept jobs until Management approves me.");
+  button(c,"Submit contractor application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:agreed.checked});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
+  button(c,"Back to sign in",login,true);
 }
 async function render() {
   if (!user) return login();
@@ -366,6 +377,7 @@ async function render() {
     );
     return;
   }
+  if(app==="contractor"&&user.role==="contractor"&&!user.approved)return pendingContractor();
   try {
     await (
       {
@@ -384,6 +396,12 @@ async function render() {
   } catch (e) {
     message(e.message, true);
   }
+}
+function pendingContractor(){
+  reset();nav.hidden=true;document.querySelector("footer").hidden=true;
+  const c=card("⏳","Application pending","Your login works. Management must speak with you by phone and meet you at the shop before you can view or accept laundry jobs.");
+  const name=field(c,"Full name","text",user.displayName||""),phone=field(c,"Phone number","tel",user.phone||""),email=field(c,"Email","email",user.email||"");
+  button(c,"Save contact information",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value});user=result.user;message("Contact information saved.")},true);
 }
 function agreement() {
   reset();
@@ -1293,7 +1311,7 @@ function managementWorkspace(data) {
   c.append(choices);
   for (const [key, icon, title, description] of [
     ["customers", "👤", "Customers", "Accounts, contact details, and assigned bags"],
-    ["contractors", "🧺", "Contractors", "Approvals, access, availability, and jobs"],
+    ["contractors", "🧺", "Contractor applications", "Review applicants, approvals, access, availability, and jobs"],
     ["bags", "🛍", "Bag inventory", "Available, assigned, exchange, and retired bags"],
     ["money", "💵", "Money", "Payment status and contractor amounts due"],
     ["orders", "📦", "Orders", "Ready for pickup and completed orders"],
@@ -1548,7 +1566,7 @@ function accountTable(data, role) {
   const people = (data.users || []).filter((u) => u.role === role),
     c = card(
       role === "customer" ? "👤" : "🧺",
-      role === "customer" ? "Customers" : "Contractors",
+      role === "customer" ? "Customers" : "Contractor applications & accounts",
       role === "customer"
         ? "Find a customer, update their contact details, pause access, or manage their bag."
         : "Approve workers, update contact details, pause access, or reset a password.",
