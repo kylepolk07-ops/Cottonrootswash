@@ -1519,8 +1519,8 @@ function bagInventory(data) {
       tr.append(node("td", value));
     const action = node("td");
     if (bag.status !== "retired") {
-      const qr = node("a", "Show / print QR", {
-        href: "/api/management/bags/" + encodeURIComponent(bag.id) + "/qr",
+      const qr = node("a", "Print bag tag", {
+        href: "/api/management/bags/" + encodeURIComponent(bag.id) + "/label",
         target: "_blank",
         rel: "noopener",
         class: "button secondary",

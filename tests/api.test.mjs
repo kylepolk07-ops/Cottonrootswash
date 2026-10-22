@@ -88,6 +88,7 @@ test('management bag labels, exchanges and account controls fail safely',async t
  assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
  const added=await owner.request('/api/management/bags',{method:'POST',body:{action:'add',id:'bag-002'}});assert.equal(added.status,200);
  const qr=await owner.request('/api/management/bags/bag-002/qr');assert.equal(qr.status,200);assert.match(qr.headers.get('content-type'),/image\/svg/);
+ const label=await owner.request('/api/management/bags/bag-002/label');assert.equal(label.status,200);assert.match(label.headers.get('content-type'),/text\/html/);
  assert.equal((await customer.request('/api/bags/exchange-request',{method:'POST',body:{bagId:'bag-001'}})).status,200);
  assert.equal((await owner.request('/api/management/bags',{method:'POST',body:{action:'exchange',oldBagId:'bag-001',newBagId:'bag-002'}})).status,200);
  assert.equal((await other.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,409,'retired bag QR cannot be reclaimed');

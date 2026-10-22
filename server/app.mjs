@@ -191,6 +191,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      headers['Content-Type']='image/svg+xml; charset=utf-8';headers['Content-Disposition']=`inline; filename="${bag.id}.svg"`;
      res.writeHead(200,headers);res.end(svg);return;
     }
+    const bagLabelMatch=path.match(/^\/api\/management\/bags\/([^/]+)\/label$/);
+    if(bagLabelMatch){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     const bag=state.bags.find(b=>b.id===decodeURIComponent(bagLabelMatch[1]));if(!bag||bag.status==='retired')fail(404,'Active bag unavailable');
+     const qr=await QRCode.toDataURL(bag.token,{errorCorrectionLevel:'M',margin:1,width:420});
+     headers['Content-Type']='text/html; charset=utf-8';headers['Content-Security-Policy']="default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+     res.writeHead(200,headers);res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${bag.id} bag tag</title><style>@page{size:3.5in 2.25in;margin:0}*{box-sizing:border-box}html,body{margin:0;background:#eee;color:#173f32;font-family:Arial,sans-serif}.sheet{width:3.5in;height:2.25in;padding:.09in;background:#fff}.tag{width:100%;height:100%;border:.025in dashed #173f32;border-radius:.12in;padding:.12in;display:grid;grid-template-columns:1.25in 1fr;gap:.12in;overflow:hidden}.qr{width:1.18in;height:1.18in;display:block}.brand{font:700 .15in Georgia,serif;color:#8b6a22;letter-spacing:.02in}.bag{font:700 .24in Georgia,serif;margin:.02in 0 .08in}.line{border-bottom:1px solid #355b49;height:.25in;font-size:.1in;padding-top:.08in}.hint{font-size:.075in;color:#52655b;margin-top:.04in;line-height:1.2}.scan{font-size:.085in;font-weight:700;text-align:center;margin-top:.04in}@media print{html,body{background:#fff}.sheet{break-inside:avoid}}</style></head><body><main class="sheet"><section class="tag"><div><img class="qr" src="${qr}" alt="QR code for ${bag.id}"><div class="scan">SCAN TO REGISTER</div></div><div><div class="brand">COTTON ROOTS &amp; CO.</div><div class="bag">${bag.id.toUpperCase()}</div><div class="line">Name / initials:</div><div class="line">Phone last 4:</div><div class="line">Notes:</div><div class="hint">Cut on the dashed border and place in a 3.5 × 2.25 inch protective holder. Use your browser’s Print command at 100% scale.</div></div></section></main></body></html>`);return;
+    }
     if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(publicOrder),audit:state.audit})}
     fail(404,'Not found');
    }
