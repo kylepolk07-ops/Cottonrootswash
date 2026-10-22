@@ -202,10 +202,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      result={accessCode:boxLockCode,issuedAt:user.box_access_issued_at,reusable:true,notice:'Scan the unique QR on the bag to register it to your account.'};
     }else if(path==='/api/claim'){
      if(user.role!=='customer')fail(403,'Customer required');
-     const bag=state.bags.find(b=>b.token===body.bagToken);if(!bag||bag.customer_id)fail(409,'Bag unavailable');
+     const bag=state.bags.find(b=>b.token===body.bagToken);if(!bag)fail(409,'Bag unavailable');
      if(body.boxAcknowledged!==true||body.lockedAcknowledged!==true)fail(400,'Box and lock acknowledgment required');
+     if(bag.customer_id===user.id){result={bag:{id:bag.id,claimed_at:bag.claimed_at,first_return_due:bag.first_return_due},alreadyRegistered:true};}
+     else {
+     if(bag.customer_id)fail(409,'Bag unavailable');
      if(state.bags.some(b=>b.customer_id===user.id))fail(403,'Extra bag purchasing is disabled');
      bag.customer_id=user.id;bag.claimed_at=new Date().toISOString();bag.first_return_due=new Date(Date.now()+86400000).toISOString();result={bag:{id:bag.id,claimed_at:bag.claimed_at,first_return_due:bag.first_return_due}};
+     }
     }else if(path==='/api/orders'){
      if(user.role!=='customer')fail(403,'Customer required');
      if(!['dropoff','full_service'].includes(body.service)||!['standard','own','contact'].includes(body.detergent))fail(400,'Invalid booking');

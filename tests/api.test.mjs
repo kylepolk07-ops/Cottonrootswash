@@ -60,6 +60,7 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
  denied(await c.request('/api/claim',{method:'POST',csrf:'invalid',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}}));
  denied(await c.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:false}}));
  const o=await setupOrder(h,c);
+ const repeat=await c.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}});assert.equal(repeat.status,200);assert.equal(repeat.data.alreadyRegistered,true);
  assert.deepEqual((await other.request('/api/orders')).data.orders,[]);
  denied(await other.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}}));
  assert.ok(!JSON.stringify(management.data.users).match(/passwordHash|\"salt\"|\"password\"/));
