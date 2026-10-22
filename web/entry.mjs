@@ -1,4 +1,5 @@
 const preferenceKey='crc_account_type';
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/web/service-worker.js').catch(()=>{});
 const choices=new Set(['customer','contractor']);
 const params=new URLSearchParams(location.search);
 const choosing=params.get('choose')==='1';
@@ -12,6 +13,7 @@ if(choosing){
  try{
   const response=await fetch('/api/me',{credentials:'same-origin',headers:{Accept:'application/json'}});
   if(response.ok){const data=await response.json(),next=destination(data.user);if(next){remember(data.user.role==='customer'?'customer':'contractor');location.replace(next)}}
+  else {const saved=localStorage.getItem(preferenceKey);if(choices.has(saved))location.replace(`/${saved}`)}
  }catch{}
 }
 

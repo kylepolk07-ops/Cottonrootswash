@@ -119,7 +119,9 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     let file=files[path];
     if(!file&&/^\/web\/[a-zA-Z0-9_.-]+$/.test(path))file=path.slice(1);
     if(!file||!existsSync(resolve(root,file)))fail(404,'Not found');
-    headers['Content-Type']=file.endsWith('.css')?'text/css':file.endsWith('.js')||file.endsWith('.mjs')?'text/javascript':'text/html';
+    const contentTypes={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.png':'image/png','.svg':'image/svg+xml; charset=utf-8','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8'};
+    const extension=file.includes('.')?`.${file.split('.').at(-1)}`:'';
+    headers['Content-Type']=contentTypes[extension]||'text/html; charset=utf-8';
     res.writeHead(200,headers);res.end(readFileSync(resolve(root,file)));return;
    }
    if(!['GET','POST'].includes(req.method))fail(405,'Method not allowed');

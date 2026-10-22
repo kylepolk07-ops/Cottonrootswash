@@ -46,6 +46,17 @@ async function setupOrder(h,c){
 }
 function action(c,id,action,extra={},key){return c.request(`/api/orders/${id}/actions`,{method:'POST',key,body:{action,...extra}})}
 
+test('installable app assets have safe mobile metadata and correct content types',async t=>{
+ const h=await harness(t);
+ const manifest=await h.anonymous('/web/manifest.webmanifest');
+ assert.equal(manifest.status,200);assert.match(manifest.headers.get('content-type'),/^application\/manifest\+json/);
+ const metadata=await manifest.json();assert.equal(metadata.name,'Cotton Roots & Co.');assert.equal(metadata.display,'standalone');assert.equal(metadata.start_url,'/');
+ for(const [path,type] of [['/web/brand-mark.png','image/png'],['/web/icon-192.png','image/png'],['/web/icon-512.png','image/png'],['/web/apple-touch-icon.png','image/png'],['/web/service-worker.js','text/javascript']]){
+  const response=await h.anonymous(path);assert.equal(response.status,200,path);assert.match(response.headers.get('content-type'),new RegExp(`^${type.replace('/','\\/')}`),path);
+ }
+ const home=await h.anonymous('/');assert.match(await home.text(),/rel="manifest" href="\/web\/manifest\.webmanifest"/);
+});
+
 test('contractors submit their own pending login for owner approval',async t=>{
  const h=await harness(t),password='my-private-application-pass';
  const invalid=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'A',phone:'1',email:'bad',username:'x',password:'short',agreed:false})});assert.equal(invalid.status,400);

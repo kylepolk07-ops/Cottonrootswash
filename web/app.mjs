@@ -2088,3 +2088,4 @@ try {
 } catch {
   login();
 }
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/web/service-worker.js').catch(()=>{});
