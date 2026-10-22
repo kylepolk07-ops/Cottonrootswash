@@ -11,6 +11,7 @@ let user,
   pricingPreview,
   agreementVersion,
   managementView = "home",
+  managementOrderId = null,
   moneyPeriod="this_week",
   moneyStart="",
   moneyEnd="";
@@ -341,7 +342,7 @@ async function render() {
       nav,
       t,
       () => {
-        if (k === "management") managementView = "home";
+        if (k === "management") {managementView = "home";managementOrderId=null;}
         return route(k);
       },
       page !== k,
@@ -497,7 +498,7 @@ function summary(c, o) {
       ),
     );
   if(o.service==="full_service"){
-    c.append(node("p",`Delivery: ${Number(o.delivery_miles||0).toFixed(1)} miles from shop · $${Number(o.delivery_fee||0).toFixed(2)} distance fee`,{class:"note"}));
+    c.append(node("p",`Delivery: ${Number(o.delivery_miles||0).toFixed(1)} round-trip miles · $${Number(o.delivery_fee||0).toFixed(2)} distance fee`,{class:"note"}));
     if(o.pickup_address)c.append(node("p",`Pickup: ${o.pickup_address}\nReturn: ${o.return_address}`,{class:"muted"}));
     if(o.delivery_instructions)c.append(node("p",`Customer delivery note: ${o.delivery_instructions}`,{class:"note"}));
     if(o.delivery_photo_at){const proof=node("a","View delivery photo",{href:`/api/orders/${encodeURIComponent(o.id)}/delivery-proof`,target:"_blank",rel:"noopener",class:"role-continue"});c.append(node("p",`Delivery photo taken ${new Date(o.delivery_photo_at).toLocaleString()}`,{class:"muted"}),proof)}
@@ -507,8 +508,8 @@ function summary(c, o) {
       node(
         "p",
         o.rush_approved
-          ? "Rush approved"
-          : "Rush requested · awaiting approval",
+          ? "Rush order · contractor earns an extra $0.75/lb"
+          : "Rush requested",
         { class: "pill" },
       ),
     );
@@ -875,7 +876,7 @@ async function actionWizard(o, action) {
         { class: "note" },
       ),
     );
-    const ack = check(stage, "I can meet this deadline.");
+    const ack = check(stage, o.rush_requested?"I accept this rush job and can meet its deadline.":"I can meet this deadline.");
     button(stage, "Confirm this step", async () => {
       if (!o.due_at || !ack.checked)
         throw Error(
@@ -940,7 +941,7 @@ async function book() {
     () => {service="full_service";full.setAttribute("aria-pressed","true");drop.setAttribute("aria-pressed","false")},
   );
   full.setAttribute("aria-pressed","false");
-  c.append(node("p","Delivery distance is measured one way from 307 Locust Street. The first 5 miles are free; each additional mile is $1.",{class:"note"}));
+  c.append(node("p","Delivery distance includes the trip from 307 Locust Street to the customer and back to the shop. The first 5 round-trip miles are free; each additional mile is $1.",{class:"note"}));
   button(c, "Next: choose detergent", () => {
     main.replaceChildren();
     const d = card(
@@ -956,22 +957,22 @@ async function book() {
     ]);
     if(service==="full_service"){
       if(!user.address){d.append(node("p","Add your home or camper address in My profile before booking pickup and return.",{class:"note"}));button(d,"Add my address",()=>route("profile"),true)}
-      else d.append(node("p",`Pickup and return address: ${user.address}\nLeave it here: ${user.deliveryInstructions||"Hand directly to me if available."}\nWe calculate the distance from 307 Locust Street automatically.`,{class:"note"}));
+      else d.append(node("p",`Pickup and return address: ${user.address}\nLeave it here: ${user.deliveryInstructions||"Hand directly to me if available."}\nWe calculate the round trip from 307 Locust Street automatically.`,{class:"note"}));
     }
-    const rush = check(d, "Ask about rush service (approval required)");
+    const rush = check(d, "Rush service");
     button(d, "Next: review order", () => {
       if(service==="full_service"&&!user.address)throw Error("Add your home or camper address in My profile first.");
       main.replaceChildren();
       const review = card(
         "🌿",
         "Ready to book?",
-        `${service==="full_service"?"Pickup & return":"Drop off"} · $${Number(prices[service]).toFixed(2)} / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? "Rush requested; not yet approved." : "Standard service."}`,
+        `${service==="full_service"?"Pickup & return":"Drop off"} · $${Number(prices[service]).toFixed(2)} / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? `Rush service adds $${Number(prices.rushPerLb).toFixed(2)}/lb.` : "Standard service."}`,
       );
       review.prepend(node("p", "STEP 3 OF 3 · REVIEW", { class: "eyebrow" }));
       review.append(
         node(
           "p",
-          `We round the measured weight up to the next ½ lb. Approved rush would add $${Number(prices.rushPerLb).toFixed(2)}/lb.${service==="full_service"?` We calculate the distance from the shop to ${user.address}. The first 5 miles are free, then $1 per mile.`:""} No payment is taken here.`,
+          `We round the measured weight up to the next ½ lb.${service==="full_service"?` We calculate the full trip from the shop to ${user.address} and back. The first 5 round-trip miles are free, then $1 per mile.`:""} No payment is taken here.`,
           { class: "note" },
         ),
       );
@@ -983,7 +984,7 @@ async function book() {
         });
         await route("orders");
         message(
-          service==="full_service"?`Delivery order booked. Distance: ${Number(booked.order.delivery_miles).toFixed(1)} miles. Approved contractors can now review it.`:"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
+          service==="full_service"?`Delivery order booked. Round-trip distance: ${Number(booked.order.delivery_miles).toFixed(1)} miles. Approved contractors can now review it.`:"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
         );
       });
       button(review, "Start again", () => route("book"), true);
@@ -1179,7 +1180,7 @@ async function earnings() {
   card(
     "🌱",
     "Your earnings",
-    `Contractor rate: $${Number(pricingPreview?.contractor??1).toFixed(2)} per approved pound for newly booked jobs. Each accepted job keeps its booked rate. Machine costs are paid by the contractor. Payout integration is disabled; no funds move here.`,
+    `Contractor rate: $${Number(pricingPreview?.contractor??1).toFixed(2)} per pound for newly booked jobs. Pickup-and-return jobs add $0.25 per pound. Rush jobs add $0.75 per pound. Owner mileage or other adjustments appear below. Payout integration is disabled; no funds move here.`,
   );
   const totals = node("div", undefined, { class: "stat-grid" });
   main.append(totals);
@@ -1199,9 +1200,12 @@ async function earnings() {
       "Completed work is pending until payment is verified. Payouts follow a full week in arrears.",
     );
   for (const e of earnings) {
-    const c = card("🧾", e.order_id || "Earnings");
-    for (const [k, v] of Object.entries(e))
-      c.append(node("p", `${k.replaceAll("_", " ")}: ${v}`));
+    const c = card("🧾", e.order_id || "Earnings",e.service==="full_service"?"Pickup & return":"Drop off");
+    c.append(node("p",`${Number(e.pounds).toFixed(1)} lb × $${Number(e.rate).toFixed(2)} = $${Number(e.base_pay).toFixed(2)}`,{class:"muted"}));
+    if(e.delivery_bonus)c.append(node("p",`Delivery bonus: $${Number(e.delivery_bonus).toFixed(2)} ($0.25 per lb)`,{class:"note"}));
+    if(e.rush_bonus)c.append(node("p",`Rush bonus: $${Number(e.rush_bonus).toFixed(2)} ($0.75 per lb)`,{class:"note"}));
+    for(const item of e.adjustment_details||[])c.append(node("p",`${item.reason}: ${Number(item.amount)<0?"−":"+"}$${Math.abs(Number(item.amount)).toFixed(2)}`,{class:"muted"}));
+    c.append(node("p",`Total contractor pay: $${Number(e.amount).toFixed(2)}`,{class:"price"}),node("span",e.status,{class:"pill"}));
   }
 }
 async function management() {
@@ -1358,7 +1362,7 @@ function managementWorkspace(data) {
 }
 function managementPricing(data){
   const prices=data.pricing||{dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
-  c.append(node("p","Pickup & return distance pricing: first 5 one-way miles from 307 Locust Street are free, then $1.00 per additional mile.",{class:"note"}));
+  c.append(node("p","Pickup & return distance pricing: first 5 round-trip miles from 307 Locust Street to the customer and back are free, then $1.00 per additional mile.",{class:"note"}));
   if(!data.pricingPinSet){c.append(node("p","Create a separate six-digit PIN. You will enter it every time pricing changes.",{class:"note"}));const pin=field(c,"New six-digit pricing PIN","password"),confirmPin=field(c,"Enter the PIN again","password");for(const input of [pin,confirmPin]){input.inputMode="numeric";input.maxLength=6;input.pattern="[0-9]{6}"}button(c,"Set pricing PIN",async()=>{await api("/api/management/pricing",{action:"set_pin",pin:pin.value,confirmPin:confirmPin.value});await route("management");message("Pricing PIN created. Open Pricing again to make changes.")});return}
   const inputs={};for(const [key,label] of [["dropoff","Customer drop-off price per lb"],["full_service","Customer pickup & return price per lb"],["rushPerLb","Rush addition per lb"],["extraBag","Extra or replacement bag price"],["contractor","Contractor pay per approved lb"]]){inputs[key]=field(c,label,"number",Number(prices[key]).toFixed(2));inputs[key].min="0";inputs[key].max="100";inputs[key].step="0.01"}
   const pin=field(c,"Confirm with six-digit pricing PIN","password");pin.inputMode="numeric";pin.maxLength=6;pin.pattern="[0-9]{6}";
@@ -1366,27 +1370,19 @@ function managementPricing(data){
   if((data.pricingHistory||[]).length){c.append(node("h3","Pricing history"));for(const item of data.pricingHistory)c.append(node("p",`${new Date(item.effective_at).toLocaleString()} · Drop-off $${Number(item.pricing.dropoff).toFixed(2)}/lb · Contractor $${Number(item.pricing.contractor).toFixed(2)}/lb`,{class:"note"}))}
 }
 function managementOrders(data) {
-  const c=card("📦","Orders","Every order appears here from booking through pickup.");managementBack(c);
-  const awaiting=(data.orders||[]).filter(o=>o.status==="awaiting_dropoff");
-  const waiting=(data.orders||[]).filter(o=>["at_shop","offered"].includes(o.status));
-  const active=(data.orders||[]).filter(o=>["accepted","washing","payment_pending","paid_hold"].includes(o.status));
-  const ready=(data.orders||[]).filter(o=>o.status==="paid_ready"&&o.payment_verified&&o.ready_for_pickup);
-  const completed=(data.orders||[]).filter(o=>o.status==="picked_up").sort((a,b)=>Date.parse(b.picked_up_at||0)-Date.parse(a.picked_up_at||0));
-  for(const [title,empty,list] of [
-    ["Awaiting customer drop-off","No newly booked orders are waiting for drop-off.",awaiting],
-    ["At shop · waiting for contractor","No dropped-off orders are waiting for a contractor.",waiting],
-    ["In progress","No orders are currently being washed or processed.",active],
-    ["Ready for pickup","No orders are waiting for pickup.",ready],
-    ["Completed","No completed orders yet.",completed],
-  ]){c.append(node("h3",`${title} (${list.length})`));if(!list.length)c.append(node("p",empty,{class:"muted"}));for(const o of list)managementOrderRow(c,o,data)}
+  const selected=managementOrderId&&(data.orders||[]).find(order=>order.id===managementOrderId);
+  if(selected)return managementOrderDetail(data,selected);
+  const c=card("📦","Orders","Scan the list, then open an order to see its complete history and actions.");managementBack(c);
+  const wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Order","Status","Customer","Contractor","Service","Due","Amount","Details"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
+  const orders=[...(data.orders||[])].sort((a,b)=>{const aDone=["picked_up","cancelled"].includes(a.status),bDone=["picked_up","cancelled"].includes(b.status);return Number(aDone)-Number(bDone)||Date.parse(b.created_at||0)-Date.parse(a.created_at||0)});
+  for(const order of orders){const customer=(data.users||[]).find(person=>person.id===order.customer_id),contractor=(data.users||[]).find(person=>person.id===order.assigned_contractor_id),row=node("tr");for(const value of [order.id,statusLabels[order.status]||order.status,customer?.displayName||customer?.username||"Unknown",contractor?.displayName||contractor?.username||"Not assigned",order.service==="full_service"?"Delivery":"Drop off",order.due_at?new Date(order.due_at).toLocaleString():"Not set",order.total===undefined?"—":`$${Number(order.total).toFixed(2)}`])row.append(node("td",value));const action=node("td");button(action,"Open",()=>{managementOrderId=order.id;route("management")},true);row.append(action);body.append(row)}
+  if(!orders.length){const row=node("tr"),empty=node("td","No orders yet.");empty.colSpan=8;row.append(empty);body.append(row)}table.append(body);wrap.append(table);c.append(wrap);
 }
-function managementOrderRow(parent,o,data) {
-  const customer=(data.users||[]).find(u=>u.id===o.customer_id),contractor=(data.users||[]).find(u=>u.id===o.assigned_contractor_id);
-  const row=node("div",undefined,{class:"step"});
-  const detail=o.status==="picked_up"?`Completed ${new Date(o.picked_up_at).toLocaleString()}`:o.status==="awaiting_dropoff"?"Booked · customer has not checked it in at the shop":["at_shop","offered"].includes(o.status)?"Checked in · available to approved contractors":statusLabels[o.status]||o.status;
-  row.append(node("div",o.status==="picked_up"?"✓":"🧺",{class:"big"}),node("p",`${o.bag_id||"No bag"} · Customer: ${customer?.displayName||customer?.username||o.customer_id||"Unknown"}\nContractor: ${contractor?.displayName||contractor?.username||"Not assigned"}\n${detail}`));
-  if(o.status==="paid_hold")button(row,"Move paid bag to pickup area",()=>actionWizard(o,"staff_release"));
-  parent.append(row);
+function managementOrderDetail(data,order){
+  const customer=(data.users||[]).find(person=>person.id===order.customer_id),contractor=(data.users||[]).find(person=>person.id===order.assigned_contractor_id),c=card("📦",`Order ${order.id}`,statusLabels[order.status]||order.status);
+  button(c,"← All orders",()=>{managementOrderId=null;route("management")},true);summary(c,order);timeline(c,order);
+  const details=node("dl");for(const [label,value] of [["Customer",customer?.displayName||customer?.username||"Unknown"],["Contractor",contractor?.displayName||contractor?.username||"Not assigned"],["Created",new Date(order.created_at).toLocaleString()],["Service",order.service==="full_service"?"Pickup & return":"Drop off"],["Address",order.pickup_address||"Shop drop-off"],["Delivery note",order.delivery_instructions||"—"],["Round-trip miles",order.service==="full_service"?Number(order.delivery_miles||0).toFixed(1):"—"],["Bag",order.bag_id||"Not assigned"]])details.append(node("dt",label),node("dd",value));c.append(details);
+  if(order.status==="paid_hold")button(c,"Move paid bag to pickup area",()=>actionWizard(order,"staff_release"));
 }
 function alertText(alert){
  const minutes=alert.state==="overdue"?alert.minutesLate:alert.minutesUntil,hours=Math.floor(minutes/60),remainder=minutes%60,amount=[hours?`${hours}h`:"",remainder?`${remainder}m`:""].filter(Boolean).join(" ")||"now";
@@ -1424,11 +1420,13 @@ function moneyManagement(data) {
   const [rangeStart,rangeEnd]=rangeFor(moneyPeriod),within=value=>{if(!rangeStart&&!rangeEnd)return true;if(!value)return false;const when=new Date(value);return (!rangeStart||when>=rangeStart)&&(!rangeEnd||when<=rangeEnd)};
   c.append(node("p",rangeStart&&rangeEnd?`Showing ${rangeStart.toLocaleDateString()} through ${rangeEnd.toLocaleDateString()}`:"Showing all recorded dates",{class:"note"}));
   const jobs = (data.orders || []).filter((o) => o.assigned_contractor_id);
-  const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+Number(order.total||0),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
+  const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+Number(order.total||0),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
   const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Contractor earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
   c.append(node("p","Estimated profit = verified customer payments − contractor earnings on returned work − costs entered below.",{class:"note"}),node("h3","Contractor payouts"));
   const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Contractor","Returned jobs","Pounds","Earned","Ready","Waiting"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
-  for(const contractor of contractors){const mine=completed.filter(order=>order.assigned_contractor_id===contractor.id),earned=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),ready=mine.filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.billed_pounds||0)*Number(order.contractor_rate_per_lb??data.pricing?.contractor??1),0),pounds=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0),0),tr=node("tr");for(const value of [contractor.displayName||contractor.username,mine.length,pounds.toFixed(1),`$${earned.toFixed(2)}`,`$${ready.toFixed(2)}`,`$${(earned-ready).toFixed(2)}`])tr.append(node("td",value));body.append(tr)}table.append(body);wrap.append(table);c.append(wrap);
+  for(const contractor of contractors){const mine=completed.filter(order=>order.assigned_contractor_id===contractor.id),earned=mine.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),ready=mine.filter(order=>order.payment_verified).reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),pounds=mine.reduce((sum,order)=>sum+Number(order.billed_pounds||0),0),tr=node("tr");for(const value of [contractor.displayName||contractor.username,mine.length,pounds.toFixed(1),`$${earned.toFixed(2)}`,`$${ready.toFixed(2)}`,`$${(earned-ready).toFixed(2)}`])tr.append(node("td",value));body.append(tr)}table.append(body);wrap.append(table);c.append(wrap);
+  c.append(node("h3","Pay adjustments"),node("p","Delivery jobs automatically include $0.25 per pound. Rush jobs automatically include $0.75 per pound. Add mileage reimbursement, another bonus, or a correction below.",{class:"note"}));
+  for(const order of completed){const contractor=contractors.find(person=>person.id===order.assigned_contractor_id),box=node("div",undefined,{class:"bag-card"}),pay=order.contractor_pay||{};box.append(node("strong",`${contractor?.displayName||contractor?.username||"Contractor"} · ${order.id}`),node("p",`Base $${Number(pay.base||0).toFixed(2)}${pay.deliveryBonus?` + delivery $${Number(pay.deliveryBonus).toFixed(2)}`:""}${pay.rushBonus?` + rush $${Number(pay.rushBonus).toFixed(2)}`:""} + adjustments $${Number(pay.adjustments||0).toFixed(2)} = $${Number(pay.total||0).toFixed(2)}`,{class:"muted"}));for(const item of order.contractor_pay_adjustments||[]){const line=node("div",undefined,{class:"step"});line.append(node("p",`${item.reason}: ${Number(item.amount)<0?"−":"+"}$${Math.abs(Number(item.amount)).toFixed(2)}`));button(line,"Remove",async()=>{await api("/api/management/pay-adjustments",{action:"delete",orderId:order.id,adjustmentId:item.id});await route("management");message("Pay adjustment removed.")},true);box.append(line)}const reason=field(box,"Reason (mileage, bonus, or correction)","text"),extra=field(box,"Adjustment amount","number");extra.min="-500";extra.max="500";extra.step="0.01";button(box,"Add pay adjustment",async()=>{await api("/api/management/pay-adjustments",{action:"add",orderId:order.id,reason:reason.value,amount:Number(extra.value)});await route("management");message("Contractor pay adjusted.")});c.append(box)}
   c.append(node("h3","Enter a business cost"));const description=field(c,"Description","text"),category=select(c,"Category",[["supplies","Supplies"],["rent","Rent"],["utilities","Utilities"],["software","Software"],["marketing","Marketing"],["other","Other"]]),date=field(c,"Date","date",shopDateKey()),amount=field(c,"Amount","number");amount.min="0.01";amount.max="100000";amount.step="0.01";
   button(c,"Add cost",async()=>{await api("/api/management/costs",{action:"add",description:description.value,category:category.value,date:date.value,amount:Number(amount.value)});await route("management");message("Business cost added.")});
   c.append(node("h3","Recorded costs"));if(!visibleCosts.length)c.append(node("p","No business costs in this date range.",{class:"muted"}));for(const cost of visibleCosts){const row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${cost.description} · $${Number(cost.amount).toFixed(2)}`),node("p",`${cost.category} · ${cost.date}`,{class:"muted"}));button(row,"Delete cost",async()=>{if(!confirm(`Delete ${cost.description}?`))return;await api("/api/management/costs",{action:"delete",id:cost.id});await route("management");message("Business cost deleted.")},true);c.append(row)}

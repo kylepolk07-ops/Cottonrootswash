@@ -93,7 +93,7 @@ try{
  const pickupChoice=page.getByRole('button',{name:/Pickup & return/});
  await pickupChoice.waitFor();
  assert.equal(await pickupChoice.isDisabled(),false,'pickup and return must be selectable');
- await page.getByText(/first 5 miles are free/i).waitFor();
+ await page.getByText(/first 5 round-trip miles are free/i).waitFor();
  await assertMobileBasics();
 
  await post('/api/claim',{bagToken:fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true});

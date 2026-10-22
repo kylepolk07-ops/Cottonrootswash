@@ -18,6 +18,11 @@ export function canOfferToContractor(contractor, offer, dateKey) {
   return contractor?.approved===true && offer?.status==='open' && !!contractor.availability?.[dateKey] && (contractor.skills?.includes(offer.work_type)||contractor.skills?.includes('both'));
 }
 export function estimateContractorPay(approvedPounds){ return roundUpHalfPound(approvedPounds)*RATE.contractor; }
+export function contractorPayBreakdown(order,defaultRate=RATE.contractor){
+  const pounds=Number(order?.billed_pounds||0),rate=Number(order?.contractor_rate_per_lb??defaultRate),base=Number((pounds*rate).toFixed(2)),deliveryBonus=order?.service==='full_service'?Number((pounds*.25).toFixed(2)):0,rushBonus=order?.rush_requested?Number((pounds*.75).toFixed(2)):0,adjustments=Array.isArray(order?.contractor_pay_adjustments)?order.contractor_pay_adjustments.reduce((sum,item)=>sum+Number(item.amount||0),0):0;
+  return {pounds,rate,base,deliveryBonus,rushBonus,adjustments:Number(adjustments.toFixed(2)),total:Number((base+deliveryBonus+rushBonus+adjustments).toFixed(2))};
+}
+/** distanceMiles is the complete shop-to-customer-to-shop round trip. */
 export function deliveryFee(distanceMiles,freeMiles=5,ratePerMile=1){
   const miles=Number(distanceMiles);if(!Number.isFinite(miles)||miles<0)throw Error('Valid delivery distance required');
   return Number((Math.max(0,miles-freeMiles)*ratePerMile).toFixed(2));

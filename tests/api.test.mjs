@@ -10,7 +10,7 @@ import {createApp} from '../server/app.mjs';
 
 async function harness(t) {
  const dataDir=await mkdtemp(join(tmpdir(),'cotton-api-'));
- let app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>8});
+ let app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4});
  async function listen(){await new Promise(r=>app.server.listen(0,'127.0.0.1',r));}
  await listen();
  const fixtures=JSON.parse(await readFile(join(dataDir,'fixtures.json'),'utf8'));
@@ -35,7 +35,7 @@ async function harness(t) {
   clients.push(c);return c;
  }
  t.after(async()=>{await new Promise(r=>app.server.close(r));app.close?.();await rm(dataDir,{recursive:true,force:true});});
- return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>8});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
+ return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
 }
 const denied=r=>assert.ok([400,401,403,404,409,422,501,503].includes(r.status),`Expected denial, received ${r.status}: ${JSON.stringify(r.data)}`);
 async function setupOrder(h,c){
@@ -155,7 +155,7 @@ test('role dashboards summarize only authorized product data',async t=>{
 });
 
 test('pickup and return orders protect addresses and include distance pricing',async t=>{
- const h=await harness(t),customer=await h.client('customer'),contractor=await h.client('contractor');
+ const h=await harness(t),customer=await h.client('customer'),contractor=await h.client('contractor'),owner=await h.client('owner');
  assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
  assert.equal((await customer.request('/api/profile',{method:'POST',body:{displayName:'Delivery Test',phone:'325-555-0111',email:'delivery@example.com',address:'100 Test Street, Sweetwater, TX',deliveryInstructions:'Leave beside the porch chair'}})).status,200);
  const booked=await customer.request('/api/orders',{method:'POST',body:{service:'full_service',detergent:'standard',rush_requested:false,pickupAddress:'forged',returnAddress:'forged',distanceMiles:0}});assert.equal(booked.status,200);assert.equal(booked.data.order.status,'offered');assert.equal(booked.data.order.delivery_fee,3);assert.equal(booked.data.order.pickup_address,'100 Test Street, Sweetwater, TX');assert.equal(booked.data.order.return_address,booked.data.order.pickup_address);assert.equal(booked.data.order.delivery_instructions,'Leave beside the porch chair');assert.ok(booked.data.order.due_at);
@@ -171,6 +171,10 @@ test('pickup and return orders protect addresses and include distance pricing',a
  const deliveryPhoto=`data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff,0xd8]),Buffer.alloc(1200)]).toString('base64')}`;
  const delivered=await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken,deliveryPhoto});assert.equal(delivered.status,200);assert.equal(delivered.data.order.status,'payment_pending');assert.ok(delivered.data.order.delivered_at);assert.ok(delivered.data.order.delivery_photo_at);
  const proof=await customer.request(`/api/orders/${offer.id}/delivery-proof`);assert.equal(proof.status,200);assert.match(proof.headers.get('content-type'),/^image\/jpeg/);
+ assert.equal((await customer.request('/api/management/pay-adjustments',{method:'POST',body:{action:'add',orderId:offer.id,reason:'Mileage',amount:4.5}})).status,403);
+ const adjusted=await owner.request('/api/management/pay-adjustments',{method:'POST',body:{action:'add',orderId:offer.id,reason:'Extra mileage reimbursement',amount:4.5}});assert.equal(adjusted.status,200);assert.equal(adjusted.data.contractorPay.base,8.5);assert.equal(adjusted.data.contractorPay.deliveryBonus,2.13);assert.equal(adjusted.data.contractorPay.total,15.13);
+ const earnings=await contractor.request('/api/earnings'),entry=earnings.data.earnings.find(item=>item.order_id===offer.id);assert.equal(entry.delivery_bonus,2.13);assert.equal(entry.adjustments,4.5);assert.equal(entry.amount,15.13);
+ const customerOrder=(await customer.request('/api/orders')).data.orders.find(item=>item.id===offer.id);assert.equal(customerOrder.contractor_pay_adjustments,undefined,'customer cannot see contractor pay adjustments');
  assert.equal((await action(contractor,offer.id,'wall_checkin',{stationToken:h.fixtures.stationToken})).status,409);
 });
 

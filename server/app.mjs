@@ -9,7 +9,7 @@ import {shopDateKey} from '../shared/calendar.mjs';
 import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
-import {invoiceTotal,deliveryFee} from '../shared/rules.mjs';
+import {invoiceTotal,deliveryFee,contractorPayBreakdown} from '../shared/rules.mjs';
 import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeTestCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -79,7 +79,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
- const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,...safe}=o;return safe};
+ const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,contractor_pay_adjustments,...safe}=o;return safe};
  // The pilot persists one state document. Serialize requests so an awaited
  // provider call can never roll an unrelated concurrent mutation backward.
  let requestQueue=Promise.resolve();
@@ -204,7 +204,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       const offers=visibleOrders.filter(o=>['at_shop','offered'].includes(o.status)&&!o.assigned_contractor_id);
       const returned=state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at);
       const nextJob=jobs[0]?publicOrder(jobs[0]):null;if(nextJob){delete nextJob.customer_id;delete nextJob.detergent}
-      return send(200,{dashboard:{role:'contractor',approved:user.approved,availableDays:user.days.length,offers:offers.length,activeJobs:jobs.length,pendingPay:Number(returned.reduce((sum,o)=>sum+(o.billed_pounds||0)*(o.contractor_rate_per_lb??DEFAULT_PRICING.contractor),0).toFixed(2)),nextJob}});
+      return send(200,{dashboard:{role:'contractor',approved:user.approved,availableDays:user.days.length,offers:offers.length,activeJobs:jobs.length,pendingPay:Number(returned.reduce((sum,o)=>sum+contractorPayBreakdown(o,DEFAULT_PRICING.contractor).total,0).toFixed(2)),nextJob}});
      }
      if(staff(user)){
       const now=Date.now(),open=state.orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -218,7 +218,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});
     if(path==='/api/availability')return send(200,{days:user.days,preference:user.preference});
-    if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>({order_id:o.id,pounds:o.billed_pounds,rate:o.contractor_rate_per_lb??DEFAULT_PRICING.contractor,amount:Number(((o.billed_pounds||0)*(o.contractor_rate_per_lb??DEFAULT_PRICING.contractor)).toFixed(2)),status:'pending',note:'No payments or payouts connected'}))});
+    if(path==='/api/earnings')return send(200,{earnings:state.orders.filter(o=>o.assigned_contractor_id===user.id&&o.returned_at).map(o=>{const pay=contractorPayBreakdown(o,DEFAULT_PRICING.contractor);return {order_id:o.id,service:o.service,pounds:pay.pounds,rate:pay.rate,base_pay:pay.base,delivery_bonus:pay.deliveryBonus,rush_bonus:pay.rushBonus,adjustments:pay.adjustments,amount:pay.total,status:'pending',adjustment_details:o.contractor_pay_adjustments||[],note:'No payments or payouts connected'}})});
     if(path==='/api/management/test-kit/bag-qr'){
      if(user.role!=='owner'||!fixtures)fail(403,'Synthetic owner access required');
      const bagToken=state.bags[0]?.token;if(!bagToken)fail(404,'Synthetic bag unavailable');
@@ -257,7 +257,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      return send(200,{complaints:state.complaints.filter(item=>item.customer_id===user.id)});
     }
     if(path==='/api/notices')return send(200,{notices:state.notices.slice(-10).reverse()});
-    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),businessCosts:state.businessCosts.slice().reverse(),audit:state.audit})}
+    if(path==='/api/management'){if(!staff(user))fail(403,'Management access required');return send(200,{users:state.users.map(publicUser),bags:state.bags.map(({token,...bag})=>bag),orders:state.orders.map(order=>({...publicOrder(order),contractor_pay_adjustments:order.contractor_pay_adjustments||[],contractor_pay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor),deadline_alert:deadlineAlert(order)})),complaints:state.complaints,pricing:state.pricing,pricingPinSet:!!state.pricingPin,pricingHistory:state.pricingHistory.slice(-20).reverse(),businessCosts:state.businessCosts.slice().reverse(),audit:state.audit})}
     fail(404,'Not found');
    }
    if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
@@ -332,11 +332,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      let pickupAddress=null,returnAddress=null,distanceMiles=0,distanceCharge=0;if(body.service==='full_service'){
       pickupAddress=user.address||'';returnAddress=pickupAddress;
       if(pickupAddress.length<5||pickupAddress.length>200)fail(400,'Add your pickup and return address in My profile first');
-      try{distanceMiles=await distanceLookup(pickupAddress)}catch{fail(503,'We could not calculate delivery distance. Check your profile address and try again.')}
+      try{const oneWayMiles=await distanceLookup(pickupAddress);distanceMiles=Number((oneWayMiles*2).toFixed(1))}catch{fail(503,'We could not calculate delivery distance. Check your profile address and try again.')}
       if(!Number.isFinite(distanceMiles)||distanceMiles<0||distanceMiles>100)fail(400,'Delivery address must be within 100 miles of the shop');
       distanceCharge=deliveryFee(distanceMiles);
      }
-     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:body.service==='full_service'?'offered':'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:false,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,delivery_free_miles:5,delivery_rate_per_mile:1,delivery_miles:distanceMiles,delivery_fee:distanceCharge,pickup_address:pickupAddress,return_address:returnAddress,delivery_instructions:body.service==='full_service'?(user.delivery_instructions||'Hand directly to customer if available.'):null,created_at:new Date().toISOString(),due_at:body.service==='full_service'?shopDueDeadline():null,due_note:body.service==='full_service'?SHOP_DUE_NOTE:'Deadline is set from the verified shop drop-off time.'};
+     const order={id:token().slice(0,24),customer_id:user.id,bag_id:bag.id,status:body.service==='full_service'?'offered':'awaiting_dropoff',service:body.service,detergent:body.detergent,rush_requested:body.rush_requested===true,rush_approved:body.rush_requested===true,payment_verified:false,ready_for_pickup:false,customer_rate_per_lb:state.pricing[body.service],rush_rate_per_lb:state.pricing.rushPerLb,contractor_rate_per_lb:state.pricing.contractor,delivery_free_miles:5,delivery_rate_per_mile:1,delivery_miles:distanceMiles,delivery_fee:distanceCharge,pickup_address:pickupAddress,return_address:returnAddress,delivery_instructions:body.service==='full_service'?(user.delivery_instructions||'Hand directly to customer if available.'):null,created_at:new Date().toISOString(),due_at:body.service==='full_service'?shopDueDeadline():null,due_note:body.service==='full_service'?SHOP_DUE_NOTE:'Deadline is set from the verified shop drop-off time.'};
      state.orders.push(order);result={order};
     }else if(path==='/api/availability'){
      if(user.role!=='contractor')fail(403,'Contractor required');
@@ -404,6 +404,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      }else if(body.action==='delete'){
       const index=state.businessCosts.findIndex(item=>item.id===body.id);if(index<0)fail(404,'Cost not found');const [cost]=state.businessCosts.splice(index,1);result={deleted:true,costId:cost.id};
      }else fail(400,'Unsupported cost action');
+    }else if(path==='/api/management/pay-adjustments'){
+     if(user.role!=='owner')fail(403,'Owner access required');
+     const order=state.orders.find(item=>item.id===body.orderId&&item.assigned_contractor_id&&item.returned_at);if(!order)fail(404,'Completed contractor order not found');order.contractor_pay_adjustments??=[];
+     if(body.action==='add'){
+      const amount=Number(body.amount),reason=typeof body.reason==='string'?body.reason.trim():'';if(!Number.isFinite(amount)||amount===0||amount<-500||amount>500||Math.abs(amount*100-Math.round(amount*100))>1e-8||reason.length<3||reason.length>120)fail(400,'Enter an adjustment from -$500 to $500 and a short reason');
+      const adjustment={id:token().slice(0,24),amount,reason,created_at:new Date().toISOString(),created_by:user.id};order.contractor_pay_adjustments.push(adjustment);result={adjustment,contractorPay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor)};
+     }else if(body.action==='delete'){
+      const index=order.contractor_pay_adjustments.findIndex(item=>item.id===body.adjustmentId);if(index<0)fail(404,'Pay adjustment not found');const [adjustment]=order.contractor_pay_adjustments.splice(index,1);result={deleted:true,adjustmentId:adjustment.id,contractorPay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor)};
+     }else fail(400,'Unsupported pay adjustment action');
     }else if(/^\/api\/management\/complaints\/[^/]+$/.test(path)){
      if(!staff(user))fail(403,'Management access required');
      const complaint=state.complaints.find(item=>item.id===path.split('/').at(-1));if(!complaint)fail(404,'Complaint not found');

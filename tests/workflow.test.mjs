@@ -12,6 +12,7 @@ test('no fake dropoff or unapproved/deadline-less job acceptance',()=>{
  const o=transition(seed(),ACTION.DROP_OFF,drop);
  assert.throws(()=>transition(o,ACTION.ACCEPT,{...contractor,deadlineAcknowledged:false}));
  assert.equal(transition(o,ACTION.ACCEPT,contractor).status,ORDER_STATUS.ACCEPTED);
+ assert.equal(transition({...o,rush_requested:true,rush_approved:false},ACTION.ACCEPT,contractor).rush_approved,true);
 });
 test('weight rounds upward and checkout requires weight, right contractor, wall station',()=>{
  const o=throughAccepted(); assert.throws(()=>transition(o,ACTION.CHECK_OUT,{...actor,wallStationVerified:true}));
