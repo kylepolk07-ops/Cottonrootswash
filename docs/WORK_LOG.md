@@ -177,3 +177,5 @@ Management bag inventory now produces a print-ready 3.5 × 2.25 inch tag for eve
 Customer accounts are active automatically after successful account setup and required agreement acceptance. Only contractors require owner review. Management labels them Pending review until the owner records both a phone conversation and an in-person shop meeting; the server rejects approval unless both confirmations are supplied and records the approval time and owner.
 
 The main Management navigation action now always resets the selected Management workspace to Home, so an owner can leave Customers, Contractors, Bags, Money, or Pilot Tools without refreshing the browser. The existing in-workspace Management Home control remains available and is covered by the mobile browser flow.
+
+Added a transparent forest-green and antique-gold Cotton Roots basket/cotton brand mark to both served apps, with accessible alternate text and a compact mobile header treatment. Refined the private pilot's backgrounds, cards, choices, buttons, inputs, status strip, statistics, and Management tables for a consistent modern boutique presentation while preserving the large step-by-step controls.
