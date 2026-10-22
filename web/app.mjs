@@ -140,24 +140,21 @@ function route(name) {
   return render();
 }
 async function scanField(parent, title) {
-  const wrap = node("div"),
-    input = field(wrap, title),
-    row = node("div", undefined, { class: "scan-row" });
-  input.autocomplete = "off";
-  input.spellcheck = false;
-  input.placeholder = "Scan or enter the exact token";
-  input.remove();
-  row.append(input);
-  wrap.append(row);
+  const wrap = node("div", undefined, { class: "scan-only" }),
+    input = node("input", undefined, { type: "hidden", "data-scan-title": title }),
+    status = node("p", "Opening your camera…", { class: "note", role: "status" });
+  wrap.append(input, node("h3", title), status);
   parent.append(wrap);
-  if (navigator.mediaDevices?.getUserMedia) {
-    button(
-      row,
-      "Open camera",
-      async () => {
-        let stream, video, cancel;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
+  async function openCamera() {
+    wrap.querySelector("button")?.remove();
+    status.textContent = "Opening your camera…";
+    if (!navigator.mediaDevices?.getUserMedia) {
+      status.textContent = "Camera scanning is unavailable in this browser. Open the app on a phone with camera access.";
+      return;
+    }
+    let stream, video, cancel;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: "environment" } },
           });
           video = node("video", undefined, {
@@ -206,32 +203,21 @@ async function scanField(parent, title) {
               if (value) {
                 input.value = value;
                 stop();
-                message("QR captured. Continue to the next step.");
+                status.textContent = "QR captured ✓ Continue to the next step.";
                 return;
               }
             } catch {}
             requestAnimationFrame(poll);
           }
           poll();
-        } catch {
-          stream?.getTracks().forEach((t) => t.stop());
-          video?.remove();
-          message(
-            "Camera could not open. Allow camera access in your browser settings, or enter the bag code manually.",
-            true,
-          );
-        }
-      },
-      true,
-    );
-  } else
-    wrap.append(
-      node(
-        "p",
-        "Camera scanning is unavailable in this browser. Enter the bag code manually.",
-        { class: "muted" },
-      ),
-    );
+    } catch {
+      stream?.getTracks().forEach((t) => t.stop());
+      video?.remove();
+      status.textContent = "Camera permission is needed to scan this QR. Allow camera access, then try again.";
+      if (!wrap.querySelector("button")) button(wrap, "Try camera again", openCamera, true);
+    }
+  }
+  queueMicrotask(openCamera);
   return input;
 }
 function login() {

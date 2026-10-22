@@ -15,6 +15,10 @@ Lead `/root` added separate Management areas for orders ready for pickup and com
 
 Contractor Home and My Jobs now show in-app deadline reminders beginning six hours before the due time, with more urgent three-hour and one-hour states and an elapsed late time after the deadline. The reminder is limited to that contractor's accepted active work and updates on app open/refresh. External SMS and phone push notifications remain unconnected because they require contractor opt-in and an approved notification provider.
 
+## 2026-10-22 — camera-only QR capture
+
+Lead `/root` removed the visible QR-token typing fields from bag and shop-station custody steps. Entering a scan step now immediately requests the rear-facing phone camera, shows a captured confirmation, stops the camera after capture, and provides a camera-permission retry when access is blocked. The underlying token remains hidden and is still validated by the authenticated server against the exact bag owner and station. Browser automation injects synthetic tokens only into hidden scan controls and asserts that no visible token field exists; this does not create a user-facing manual entry route.
+
 | Date/time | Agent/contributor | Scope | Changes/commit | Tests and evidence | Risk/blocker | Owner approval needed | Reviewer |
 |---|---|---|---|---|---|---|---|
 | 2026-10-21 | ChatGPT (this chat) | Planning | Added mandatory security and reporting policy | Policy document created; implementation not audited | Live backend and staging pending | See OWNER_APPROVALS.md | Not yet reviewed |
