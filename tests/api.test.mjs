@@ -230,6 +230,7 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  assert.equal(accepts.filter(r=>r.status===200).length,1,JSON.stringify(accepts));
  const assigned=accepts[0].status===200?k:k2,unassigned=assigned===k?k2:k;
  assert.ok(!(await unassigned.request('/api/orders')).data.orders.some(order=>order.id===o.id));
+ const assignedOrder=(await assigned.request('/api/orders')).data.orders.find(order=>order.id===o.id);assert.ok(assignedOrder.customer_name,'Assigned contractor needs the customer name for physical bag verification');assert.equal(assignedOrder.customer_id,undefined,'Internal customer ID stays private');
  denied(await action(unassigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1}));
  denied(await action(assigned,o.id,'wall_checkout',scan));
  denied(await action(assigned,o.id,'record_weight',{bagToken:'wrong',measuredPounds:8.1}));

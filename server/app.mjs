@@ -248,7 +248,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      fail(403,'Dashboard unavailable');
     }
     if(path==='/api/orders')return send(200,{orders:state.orders.filter(o=>visible(o,user)).map(o=>{
-     const v=publicOrder(o),contractor=state.users.find(account=>account.id===o.assigned_contractor_id);if(contractor)v.assigned_contractor_name=contractor.displayName||contractor.username;
+     const v=publicOrder(o),contractor=state.users.find(account=>account.id===o.assigned_contractor_id),customer=state.users.find(account=>account.id===o.customer_id);if(contractor)v.assigned_contractor_name=contractor.displayName||contractor.username;if(customer&&(o.customer_id===user.id||staff(user)||o.assigned_contractor_id===user.id))v.customer_name=customer.displayName||customer.username;
      if(o.customer_id!==user.id&&!staff(user)){delete v.customer_id;delete v.detergent;if(o.assigned_contractor_id!==user.id){delete v.pickup_address;delete v.return_address;delete v.delivery_instructions}}return v;
     })});
     if(path==='/api/bags')return send(200,{bags:state.bags.filter(b=>b.customer_id===user.id&&b.status!=='retired').map(({token,...b})=>b)});

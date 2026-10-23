@@ -361,6 +361,7 @@ async function render() {
           ["orders", "My laundry"],
           ["book", "New order"],
           ["bags", "My bags"],
+          ["alerts", "Alerts"],
           ["profile", "Profile"],
         ]
       : [
@@ -383,6 +384,7 @@ async function render() {
     earnings: "$",
     management: "⚙",
     profile: "👤",
+    alerts: "🔔",
   };
   for (const [k, t] of pages) {
     const tab = button(
@@ -446,6 +448,7 @@ async function render() {
         orders: orders,
         book: book,
         bags: bags,
+        alerts: customerAlerts,
         profile: profile,
         availability: availability,
         earnings: earnings,
@@ -549,6 +552,25 @@ function summary(c, o) {
       ),
     );
   if (o.due_note) c.append(node("p", o.due_note, { class: "muted" }));
+}
+async function customerAlerts(){
+ const response=await api("/api/orders"),events=[];
+ const add=(order,at,title,text)=>{if(at)events.push({order,at,title,text})};
+ for(const order of response.orders){
+  add(order,order.picked_up_at,"Laundry collected",`Bag ${order.bag_id} was collected. This order is complete.`);
+  add(order,order.paid_at,"Payment confirmed",order.service==="full_service"?`Payment for bag ${order.bag_id} is confirmed. Confirm receipt in My laundry.`:`Bag ${order.bag_id} is paid and ready for pickup at Cotton Roots & Company.`);
+  add(order,order.returned_at||order.delivered_at,"Laundry returned",order.service==="full_service"?`Bag ${order.bag_id} was delivered. Payment is ready in My laundry.`:`Bag ${order.bag_id} was returned to the shop. Payment is ready in My laundry.`);
+  add(order,order.wash_completed_at,"Washing completed",`Bag ${order.bag_id} is clean and folded. It is being returned next.`);
+  add(order,order.checked_out_at,"Picked up for washing",`Bag ${order.bag_id} was checked out to your washing specialist.`);
+  add(order,order.dropped_at,"Checked in at the shop",`Bag ${order.bag_id} was confirmed at Cotton Roots & Company.`);
+ }
+ events.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+ const c=card("🔔","Notifications","Status changes appear here whenever you open or refresh the app.");
+ button(c,"Refresh notifications",()=>route("alerts"),true);
+ if(!events.length)c.append(node("p","No laundry notifications yet.",{class:"muted"}));
+ for(const event of events){const item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));c.append(item)}
+ const push=card("📲","Phone alerts","This installable web app can support phone push notifications without an App Store app. Background push setup and customer permission will be added with the notification service; for now, alerts update inside Cotton Roots when it opens.");
+ push.append(node("p","Text messages can remain the backup notification method after registration is approved.",{class:"note"}));
 }
 function contractorReminder(order) {
   if(user?.role!=="contractor"||order.assigned_contractor_id!==user.id||!["accepted","washing"].includes(order.status)||!order.due_at||order.returned_at)return null;
@@ -790,6 +812,23 @@ async function actionWizard(o, action) {
     stopCamera?.();
     stage.replaceChildren();
   }
+  function custodyConfirmation(next){
+    clear();
+    const meta={
+      drop_off:{heading:"DIRTY LAUNDRY · SHOP DROP-OFF",action:"I am dropping off this dirty bag at Cotton Roots & Company",condition:"DIRTY — ready for washing"},
+      record_weight:{heading:"DIRTY LAUNDRY · CONTRACTOR PICKUP",action:"I am picking up this dirty bag from Cotton Roots & Company",condition:"DIRTY — leaving the shop for washing"},
+      wall_checkout:{heading:"DIRTY LAUNDRY · CUSTOMER PICKUP",action:"I am picking up this dirty bag from the customer",condition:"DIRTY — contractor taking custody"},
+      return_bag:{heading:"CLEAN LAUNDRY · RETURN",action:o.service==="full_service"?"I am delivering this clean bag to the customer":"I am dropping off this clean bag at Cotton Roots & Company",condition:"CLEAN — washed, dried, and folded"},
+      customer_pickup:{heading:"CLEAN LAUNDRY · CUSTOMER PICKUP",action:o.service==="full_service"?"I am confirming delivery of this clean bag":"I am picking up this clean bag from Cotton Roots & Company",condition:"CLEAN — correct customer pickup"},
+      staff_release:{heading:"CLEAN LAUNDRY · PAID PICKUP AREA",action:"I am moving this clean, paid bag to the pickup area",condition:"CLEAN — payment verified"},
+    }[action];
+    if(!meta)return next();
+    const warning=node("section",undefined,{class:"custody-confirmation"});
+    warning.append(node("p",meta.heading,{class:"eyebrow"}),node("h2",`Verify ${String(o.bag_id||"bag").toUpperCase()}`));
+    const details=node("dl");for(const [label,value] of [["Bag",String(o.bag_id||"Not assigned").toUpperCase()],["Customer",o.customer_name||user.displayName||user.username],["Condition",meta.condition],["Location",o.service==="full_service"&&["wall_checkout","return_bag","customer_pickup"].includes(action)?"Customer address":"Cotton Roots & Company location"]])details.append(node("dt",label),node("dd",value));warning.append(details,node("p","Stop if the bag number, customer, condition, or action does not match what is in front of you.",{class:"confirm-warning"}));stage.append(warning);
+    const confirmButton=button(stage,`VERIFY: ${meta.action}`,next);confirmButton.classList.add("custody-confirm");
+    button(stage,"Cancel and scan again",bag,true);
+  }
   async function station() {
     clear();
     stage.append(
@@ -863,9 +902,8 @@ async function actionWizard(o, action) {
         if (!token.value.trim())
           throw Error("Scan or enter the bag token first.");
         body.bagToken = token.value.trim();
-        if (action === "drop_off") await station();
-        else if (action === "record_weight") weigh();
-        else {if(deliveryPhoto){const file=deliveryPhoto.files?.[0];if(!file)throw Error("Take a delivery photo first.");body.deliveryPhoto=await prepareDeliveryPhoto(file)}await submit()}
+        if(deliveryPhoto){const file=deliveryPhoto.files?.[0];if(!file)throw Error("Take a delivery photo first.");body.deliveryPhoto=await prepareDeliveryPhoto(file)}
+        custodyConfirmation(action === "drop_off"?station:action === "record_weight"?weigh:submit);
       },
     );
   }
