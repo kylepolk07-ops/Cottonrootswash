@@ -7,7 +7,7 @@ const choosing=params.get('choose')==='1';
 const remember=role=>{try{localStorage.setItem(preferenceKey,role)}catch{}};
 const destination=user=>user?.role==='customer'?'/customer':['contractor','owner','staff'].includes(user?.role)?'/contractor':null;
 const started=Date.now();
-const finishSplash=async()=>{const remaining=1100-(Date.now()-started);if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining));document.body.classList.remove('splash-active')};
+const finishSplash=async()=>{const remaining=3000-(Date.now()-started);if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining));document.body.classList.remove('splash-active');await new Promise(resolve=>setTimeout(resolve,380))};
 let nextRoute=null;
 
 if(choosing){
