@@ -8,6 +8,10 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createApp} from '../server/app.mjs';
 
+const agreementVersion='launch-draft-2026-10-23-v2';
+const customerConditions=['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'];
+const contractorConditions=['platform_role','independent_business','custody_care','deadline_scans','legal_draft'];
+
 async function harness(t) {
  const dataDir=await mkdtemp(join(tmpdir(),'cotton-api-'));
  let app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4});
@@ -60,12 +64,22 @@ test('installable app assets have safe mobile metadata and correct content types
 test('contractors submit their own pending login for owner approval',async t=>{
  const h=await harness(t),password='my-private-application-pass';
  const invalid=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'A',phone:'1',email:'bad',username:'x',password:'short',agreed:false})});assert.equal(invalid.status,400);
- const submitted=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true})});assert.equal(submitted.status,201);
- const duplicate=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true})});assert.equal(duplicate.status,409);
+ const missingTerms=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true,conditions:contractorConditions.slice(0,-1)})});assert.equal(missingTerms.status,400);
+ const submitted=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true,conditions:contractorConditions})});assert.equal(submitted.status,201);
+ const duplicate=await h.anonymous('/api/contractor-applications',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({displayName:'Jordan Washer',phone:'325-555-0123',email:'jordan@example.com',username:'jordan.washer',password,agreed:true,conditions:contractorConditions})});assert.equal(duplicate.status,409);
  const login=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'jordan.washer',password})});assert.equal(login.status,200);const session=await login.json();assert.equal(session.user.approved,false);assert.equal(session.user.applicationStatus,'pending');
  const owner=await h.client('owner'),management=await owner.request('/api/management'),applicant=management.data.users.find(user=>user.username==='jordan.washer');assert.equal(applicant.phone,'325-555-0123');assert.equal(applicant.applicationStatus,'pending');
  assert.equal((await owner.request('/api/management/approve',{method:'POST',body:{userId:applicant.id}})).status,400);
  const approved=await owner.request('/api/management/approve',{method:'POST',body:{userId:applicant.id,phoneConfirmed:true,inPersonConfirmed:true}});assert.equal(approved.status,200);assert.equal(approved.data.user.applicationStatus,'approved');
+});
+
+test('customers self-register only after completing every field and agreement',async t=>{
+ const h=await harness(t),password='customer-private-pass-123',registration={displayName:'Taylor Customer',phone:'325-555-0188',email:'TAYLOR@example.com',address:'55 Oak Street, Sweetwater, TX',username:'taylor.customer',password,agreed:true,conditions:customerConditions};
+ const missingTerms=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...registration,conditions:customerConditions.slice(0,-1)})});assert.equal(missingTerms.status,400);
+ const missingAddress=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...registration,address:''})});assert.equal(missingAddress.status,400);
+ const created=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(registration)});assert.equal(created.status,201);
+ const duplicate=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(registration)});assert.equal(duplicate.status,409);
+ const login=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'taylor.customer',password})});assert.equal(login.status,200);const session=await login.json();assert.equal(session.user.role,'customer');assert.equal(session.user.approved,true);assert.equal(session.user.applicationStatus,'approved');assert.equal(session.user.agreementVersion,agreementVersion);assert.equal(session.user.email,'taylor@example.com');
 });
 
 test('customers can review, verify, and later edit their profile',async t=>{
@@ -92,8 +106,8 @@ test('authentication, CSRF, roles, protected resources and disabled sensitive fe
  denied(await c.request('/api/management/accounts',{method:'POST',body:{role:'customer',username:'not-owner',temporaryPassword:pilotPassword}}));
  const pilotLogin=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'pilot-user',password:pilotPassword})});assert.equal(pilotLogin.status,200);const pilotSession=await pilotLogin.json(),pilotCookie=pilotLogin.headers.get('set-cookie').split(';')[0];
  assert.equal((await h.anonymous('/api/dashboard',{headers:{cookie:pilotCookie}})).status,428);
- const bypassed=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:'pilot-2026-10-22-v1',accepted:true})});assert.equal(bypassed.status,400);
- const accepted=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:'pilot-2026-10-22-v1',accepted:true,conditions:['platform_role','customer_contractor_service','pilot_data']})});assert.equal(accepted.status,200);
+ const bypassed=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:agreementVersion,accepted:true})});assert.equal(bypassed.status,400);
+ const accepted=await h.anonymous('/api/agreements/accept',{method:'POST',headers:{cookie:pilotCookie,'content-type':'application/json','x-csrf-token':pilotSession.csrf,'idempotency-key':randomUUID()},body:JSON.stringify({version:agreementVersion,accepted:true,conditions:customerConditions})});assert.equal(accepted.status,200);
  assert.equal((await h.anonymous('/api/dashboard',{headers:{cookie:pilotCookie}})).status,200);
  assert.ok(!JSON.stringify((await owner.request('/api/management')).data).includes(pilotPassword));
  denied(await c.request('/api/claim',{method:'POST',csrf:'invalid',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}}));

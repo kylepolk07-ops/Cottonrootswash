@@ -68,7 +68,7 @@ try{
  await page.getByRole('link',{name:'Continue as Customer',exact:true}).click();
  await page.waitForURL(`${base}/customer`);
  await page.goto(base+'/');
- await page.waitForURL(`${base}/customer`);
+ await page.getByRole('heading',{name:'How will you use Cotton Roots?',exact:true}).waitFor();
  await page.goto(`${base}/?choose=1`);
  await page.getByRole('heading',{name:'How will you use Cotton Roots?',exact:true}).waitFor();
  await login('customer','customer');

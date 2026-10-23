@@ -13,7 +13,6 @@ if(choosing){
  try{
   const response=await fetch('/api/me',{credentials:'same-origin',headers:{Accept:'application/json'}});
   if(response.ok){const data=await response.json(),next=destination(data.user);if(next){remember(data.user.role==='customer'?'customer':'contractor');location.replace(next)}}
-  else {const saved=localStorage.getItem(preferenceKey);if(choices.has(saved))location.replace(`/${saved}`)}
  }catch{}
 }
 

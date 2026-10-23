@@ -16,6 +16,23 @@ let user,
   moneyPeriod="this_week",
   moneyStart="",
   moneyEnd="";
+const customerTerms=[
+ ["platform_role","Cotton Roots provides the app and secure drop-off/pickup location and facilitates the transaction. The washing service is performed by an independent washing specialist."],
+ ["customer_contractor_service","The service agreement is between me and the washing specialist who accepts the order; optional transportation is part of that accepted service."],
+ ["inspect_preexisting_damage","I will inspect every garment before drop-off and disclose existing tears, rips, stains, missing buttons, weak seams, damaged zippers, and other deficiencies."],
+ ["laundry_risk","I understand ordinary washing and drying can reveal or worsen hidden wear, shrinkage, color loss, fabric weakness, decorations, or pre-existing damage. Subject to applicable law, Cotton Roots is not responsible for undisclosed pre-existing tears, rips, defects, or special risks. School clothing, uniforms, workwear, and time-sensitive items should not be submitted unless I accept that risk."],
+ ["empty_pockets","I will empty pockets and remove money, jewelry, electronics, documents, and other valuables before submitting laundry."],
+ ["care_disclosure","I will identify special-care, dry-clean-only, hand-wash-only, delicate, valuable, or irreplaceable items before service and will not place undisclosed unsuitable items in the bag."],
+ ["claims_process","I will inspect returned laundry promptly and report missing items, damage, or other deficiencies to Management through the app so the matter can be documented and reviewed."],
+ ["legal_draft","I understand these are launch-draft terms pending attorney review and agree to the current terms shown before creating my account."],
+];
+const contractorTerms=[
+ ["platform_role","Cotton Roots provides the app and secure location and facilitates customer connections; the accepted washing service is between me and the customer."],
+ ["independent_business","I choose my availability and jobs and am responsible for my independent-business taxes, expenses, methods, and optional transportation commitments."],
+ ["custody_care","I will inspect, document, keep separate, and carefully handle every accepted bag and stop for Management review when damage, valuables, unsafe items, or unclear care instructions are found."],
+ ["deadline_scans","I will follow every bag scan, custody, deadline, photo, and return step and report any delay or problem promptly."],
+ ["legal_draft","I understand these are launch-draft terms pending attorney review and agree to the current terms shown with my application."],
+];
 window.addEventListener("pagehide", () => stopCamera?.());
 function node(tag, text, attrs = {}) {
   const e = document.createElement(tag);
@@ -279,7 +296,18 @@ function login() {
       submit.disabled = false;
     }
   });
-  if(app==="contractor") button(c,"Apply to be a contractor",contractorApplication,true);
+  button(c,app==="customer"?"Register as a customer":"Register as a contractor",app==="customer"?customerRegistration:contractorApplication,true);
+  const chooser=node("a","← Choose Customer or Contractor",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
+}
+function termChecks(parent,terms){
+ parent.append(node("h3","Required agreements"),node("p","Read and check every item. These launch-draft terms should be reviewed by your attorney before public launch.",{class:"note"}));
+ return terms.map(([id,text])=>[id,check(parent,text)]);
+}
+function customerRegistration(){
+ reset();const c=card("👤","Create a Customer account","Complete every field and agreement. Customer accounts activate automatically after successful registration.");
+ const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
+ username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 12 characters.",{class:"note"}));const terms=termChecks(c,customerTerms);
+ button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
 }
 function contractorApplication(){
   reset();
@@ -287,8 +315,8 @@ function contractorApplication(){
   const name=field(c,"Full name","text"),phone=field(c,"Phone number","tel"),email=field(c,"Email","email"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
   username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";
   c.append(node("p","Password must be at least 12 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
-  const agreed=check(c,"I understand this is an application and I cannot accept jobs until Management approves me.");
-  button(c,"Submit contractor application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:agreed.checked});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
+  const terms=termChecks(c,contractorTerms),approval=check(c,"I understand this is an application and I cannot accept jobs until Management completes the phone call and in-person shop meeting.");
+  button(c,"Submit contractor application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!approval.checked||!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
   button(c,"Back to sign in",login,true);
 }
 async function render() {
@@ -425,27 +453,14 @@ function agreement() {
     customer ? "Customer pilot agreement" : "Washing specialist pilot agreement",
     "Read and accept every condition before continuing. This private-pilot draft must receive Texas legal review before public launch.",
   );
-  const conditions = customer
-    ? [
-        "Cotton Roots provides the app and secure drop-off/pickup location and facilitates the transaction.",
-        "The accepted washing service is performed by an independent washing specialist; optional transportation is agreed with that specialist.",
-        "I will follow the bag scan, custody, payment, and pickup steps shown in the app.",
-      ]
-    : [
-        "I choose my availability and which offered jobs to accept; no job or transportation service is required.",
-        "I am responsible for my independent-business taxes, expenses, care of accepted laundry, and agreed transportation.",
-        "I will follow the bag scan, custody, deadline, payment-verification, and return steps shown in the app.",
-      ];
-  const checks = conditions.map((text) => check(c, text));
+  const terms=customer?customerTerms:contractorTerms,checks=terms.map(([,text]) => check(c, text));
   button(c, "Agree and continue", async () => {
     if (!checks.every((item) => item.checked))
       throw Error("Check every agreement condition before continuing.");
     const result = await api("/api/agreements/accept", {
       version: agreementVersion,
       accepted: true,
-      conditions: customer
-        ? ["platform_role", "customer_contractor_service", "pilot_data"]
-        : ["platform_role", "independent_business", "pilot_data"],
+      conditions: terms.map(([id])=>id),
     });
     user = result.user;
     nav.hidden = false;

@@ -17,9 +17,9 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-const AGREEMENT_VERSION='pilot-2026-10-22-v1';
+const AGREEMENT_VERSION='launch-draft-2026-10-23-v2';
 const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1});
-const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','pilot_data'],contractor:['platform_role','independent_business','pilot_data']};
+const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'],contractor:['platform_role','independent_business','custody_care','deadline_scans','legal_draft']};
 const SHOP_COORDINATES={latitude:32.47095,longitude:-100.40594};
 const milesBetween=(a,b)=>{const radians=value=>value*Math.PI/180,dLat=radians(b.latitude-a.latitude),dLon=radians(b.longitude-a.longitude),lat1=radians(a.latitude),lat2=radians(b.latitude),h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))};
 async function estimateDeliveryMiles(address){
@@ -199,11 +199,22 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(username))fail(400,'Username must be 4–32 letters, numbers, dots, dashes, or underscores');
     if(password.length<12||password.length>256)fail(400,'Password must be 12–256 characters');
     if(displayName.length<2||displayName.length>80||phone.length<7||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Enter your name, phone number, and a valid email address');
-    if(body.agreed!==true)fail(400,'Agree to the contractor application conditions');
+    if(body.agreed!==true||!Array.isArray(body.conditions)||body.conditions.length!==AGREEMENT_CONDITIONS.contractor.length||!AGREEMENT_CONDITIONS.contractor.every(id=>body.conditions.includes(id)))fail(400,'Agree to every contractor condition');
     if(state.users.some(u=>u.username===username))fail(409,'That username is unavailable');
-    const salt=token(),createdAt=new Date().toISOString(),applicant={id:token().slice(0,24),username,role:'contractor',salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:false,active:true,displayName,phone,email,days:[],preference:'both',application_status:'pending',application_created_at:createdAt};
+    const salt=token(),createdAt=new Date().toISOString(),applicant={id:token().slice(0,24),username,role:'contractor',salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:false,active:true,displayName,phone,email,days:[],preference:'both',application_status:'pending',application_created_at:createdAt,agreement_version:AGREEMENT_VERSION,agreement_accepted_at:createdAt,agreement_conditions:[...AGREEMENT_CONDITIONS.contractor]};
     state.users.push(applicant);state.audit.push({id:token().slice(0,24),actor:applicant.id,at:createdAt,path,action:'contractor_application_submitted'});save();
     send(201,{submitted:true,message:'Application submitted for Management review'});return;
+   }
+   if(path==='/api/customer-registrations'&&req.method==='POST'){
+    const key=`customer-registration:${req.socket.remoteAddress}`,now=Date.now();let a=attempts.get(key);if(!a||now-a.at>3600000)a={count:0,at:now};attempts.set(key,a);if(++a.count>10)fail(429,'Too many registrations. Try again later');
+    const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',password=typeof body.password==='string'?body.password:'',displayName=typeof body.displayName==='string'?body.displayName.trim():'',phone=typeof body.phone==='string'?body.phone.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'',address=typeof body.address==='string'?body.address.trim():'';
+    if(!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(username))fail(400,'Username must be 4–32 letters, numbers, dots, dashes, or underscores');
+    if(password.length<12||password.length>256)fail(400,'Password must be 12–256 characters');
+    if(displayName.length<2||displayName.length>80||phone.length<7||phone.length>32||email.length>128||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||address.length<8||address.length>200)fail(400,'Enter your name, phone number, valid email, and service address');
+    if(body.agreed!==true||!Array.isArray(body.conditions)||body.conditions.length!==AGREEMENT_CONDITIONS.customer.length||!AGREEMENT_CONDITIONS.customer.every(id=>body.conditions.includes(id)))fail(400,'Agree to every customer condition');
+    if(state.users.some(u=>u.username===username))fail(409,'That username is unavailable');
+    const salt=token(),createdAt=new Date().toISOString(),customer={id:token().slice(0,24),username,role:'customer',salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:true,active:true,displayName,phone,email,address,application_status:'approved',created_at:createdAt,profile_verified_at:createdAt,agreement_version:AGREEMENT_VERSION,agreement_accepted_at:createdAt,agreement_conditions:[...AGREEMENT_CONDITIONS.customer]};
+    state.users.push(customer);state.audit.push({id:token().slice(0,24),actor:customer.id,at:createdAt,path,action:'customer_self_registered'});save();send(201,{registered:true,message:'Customer account created. Sign in to continue.'});return;
    }
    const sid=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('crc_session='))?.slice(12);
    const session=sid&&db.prepare('SELECT user_id AS userId, csrf, expires FROM sessions WHERE id_hash=?').get(hash(sid));if(!session||session.expires<Date.now()){if(sid)db.prepare('DELETE FROM sessions WHERE id_hash=?').run(hash(sid));fail(401,'Sign in required')}
