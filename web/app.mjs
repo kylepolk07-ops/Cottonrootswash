@@ -309,11 +309,23 @@ function termChecks(parent,terms){
  parent.append(node("h3","Required agreements"),node("p","Read and check every item. These launch-draft terms should be reviewed by your attorney before public launch.",{class:"note"}));
  return terms.map(([id,text])=>[id,check(parent,text)]);
 }
+function customerAgreement(parent){
+ parent.append(node("h3","Customer terms and disclosures"),node("p","Scroll through the complete agreement. The acceptance box unlocks when you reach the bottom.",{class:"note"}));
+ const terms=node("div",undefined,{class:"agreement-scroll",tabindex:"0","aria-label":"Customer terms and disclosures"});
+ terms.append(node("h3","Cotton Roots & Company Wash & Fold — Customer Agreement"));
+ customerTerms.forEach(([,text],index)=>terms.append(node("p",`${index+1}. ${text}`)));
+ parent.append(terms);
+ const reached=node("p","Scroll to the bottom to continue.",{class:"agreement-progress",role:"status"});parent.append(reached);
+ const accepted=check(parent,"I have reviewed and agree to the complete Customer Terms and Disclosures shown above.");accepted.disabled=true;
+ const update=()=>{if(terms.scrollTop+terms.clientHeight>=terms.scrollHeight-8){accepted.disabled=false;reached.textContent="Terms reviewed. You may now accept the agreement.";terms.removeEventListener("scroll",update)}};
+ terms.addEventListener("scroll",update,{passive:true});queueMicrotask(update);
+ return accepted;
+}
 function customerRegistration(){
  reset();const c=card("👤","Create a Customer account","Complete every field and agreement. Customer accounts activate automatically after successful registration.");
  const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
- username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 12 characters.",{class:"note"}));const terms=termChecks(c,customerTerms);
- button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
+ username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 12 characters.",{class:"note"}));const accepted=customerAgreement(c);
+ button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
 }
 function contractorApplication(){
   reset();
