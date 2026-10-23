@@ -16,6 +16,7 @@ let user,
   moneyPeriod="this_week",
   moneyStart="",
   moneyEnd="";
+const rememberedIdentityKey="crc_remembered_identity";
 const customerTerms=[
  ["platform_role","Cotton Roots provides the app and secure drop-off/pickup location and facilitates the transaction. The washing service is performed by an independent washing specialist."],
  ["customer_contractor_service","The service agreement is between me and the washing specialist who accepts the order; optional transportation is part of that accepted service."],
@@ -255,11 +256,13 @@ function login() {
   );
   const f = node("form");
   c.append(f);
+  let remembered=null;try{remembered=JSON.parse(localStorage.getItem(rememberedIdentityKey)||"null")}catch{}
+  if(remembered?.role!==app)remembered=null;
   const username = field(
       f,
       "Username",
       "text",
-      "",
+      remembered?.username||"",
     ),
     password = field(f, "Password", "password");
   username.autocomplete = "username";
@@ -267,6 +270,7 @@ function login() {
   username.autocorrect = "off";
   username.spellcheck = false;
   password.autocomplete = "current-password";
+  const rememberLogin=check(f,"Remember my account type and username on this device",Boolean(remembered));
   const submit = node("button", "Sign in", { type: "submit" });
   f.append(submit);
   f.addEventListener("submit", async (e) => {
@@ -285,6 +289,8 @@ function login() {
       pricingPreview = me.pricing;
       agreementVersion = me.agreement?.version || null;
       user = me.user;
+      if(rememberLogin.checked){try{localStorage.setItem(rememberedIdentityKey,JSON.stringify({role:user.role==="customer"?"customer":"contractor",username:user.username}))}catch{}}
+      else {try{localStorage.removeItem(rememberedIdentityKey)}catch{}}
       if (me.staging?.disposable)
         document.querySelector(".staging").textContent =
           "Private preview · practice data only · no real payments or documents";
