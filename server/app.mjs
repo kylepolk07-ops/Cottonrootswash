@@ -11,7 +11,7 @@ import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal,deliveryFee,contractorPayBreakdown} from '../shared/rules.mjs';
 import {deadlineAlert} from '../shared/management.mjs';
-import {verifyStripeSignature,createStripeTestCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
+import {verifyStripeSignature,createStripeCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
@@ -34,7 +34,7 @@ async function estimateDeliveryMiles(address){
  }catch{}
  return Number(milesBetween(SHOP_COORDINATES,destination).toFixed(1));
 }
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin&&privateGate){
   const url=new URL(remoteOrigin);
@@ -54,6 +54,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (id_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, csrf TEXT NOT NULL, expires INTEGER NOT NULL)');
  let row=db.prepare('SELECT value FROM state WHERE id=1').get();
  let state=row?JSON.parse(row.value):{users:[],bags:[],orders:[],audit:[],keys:{},stationToken:token()};
+ if(payment?.mode==='live'&&row&&state.environment!=='live')throw Error('Live payments require a fresh live database; pilot data cannot be converted automatically');
+ if(!row)state.environment=payment?.mode==='live'?'live':'pilot';
  state.complaints??=[];
  state.pricing??={...DEFAULT_PRICING};
  state.pricingHistory??=[];state.notices??=[];state.pricingPin??=null;
@@ -69,6 +71,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   });
   const bagToken=token();state.bags.push({id:'bag-001',token:bagToken,customer_id:null});
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
+ }
+ if(!row&&payment?.mode==='live'){
+  if(!initialOwner||!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(initialOwner.username)||typeof initialOwner.password!=='string'||initialOwner.password.length<24||initialOwner.password.length>256)throw Error('A secure initial live owner is required');
+  const salt=token();state.users.push({id:token().slice(0,24),username:initialOwner.username,role:'owner',salt,passwordHash:scryptSync(initialOwner.password,salt,64).toString('hex'),approved:true,active:true,created_at:new Date().toISOString()});save();
  }
  // Older verified payments waited for a manual staff release. Returned bags
  // are already secured at the shop, so verified payment now makes them ready
@@ -116,7 +122,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     headers['Strict-Transport-Security']='max-age=31536000';
     const remotePath=new URL(req.url,remoteOrigin).pathname;
     if(remotePath==='/api/payments/stripe/webhook'){
-     if(payment?.provider!=='stripe'||payment.mode!=='test')fail(404,'Not found');
+     if(payment?.provider!=='stripe')fail(404,'Not found');
      if(req.method!=='POST'||!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
      let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>65536)fail(413,'Request too large');chunks.push(chunk)}
      const rawBody=Buffer.concat(chunks),signatureHeader=req.headers['stripe-signature'];
@@ -127,9 +133,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(!order||!order.stripe_checkout_session_id||!Number.isSafeInteger(order.stripe_checkout_total_cents))fail(409,'Unknown checkout');
      const before=JSON.stringify(state);
      try{
-      const paymentRecord=reconcileStripeCheckout(event,{orderId:order.id,customerId:order.customer_id,amountCents:order.stripe_checkout_total_cents,currency:'USD',checkoutSessionId:order.stripe_checkout_session_id,processedEventIds:new Set(state.paymentEvents)});
+      const customer=state.users.find(account=>account.id===order.customer_id);if(!customer)fail(409,'Payment customer unavailable');
+      const paymentRecord=reconcileStripeCheckout(event,{orderId:order.id,customerId:order.customer_id,amountCents:order.stripe_checkout_total_cents,currency:'USD',checkoutSessionId:order.stripe_checkout_session_id,processedEventIds:new Set(state.paymentEvents),mode:payment.mode,stripeCustomerId:customer.stripe_customer_id||''});
       const updated=transition(order,ACTION.PAYMENT,{verifiedServerWebhook:true,paymentEventId:event.id});
-      Object.assign(updated,{payment_provider:'stripe_test',stripe_payment_intent_id:paymentRecord.paymentIntentId,stripe_checkout_session_id:paymentRecord.sessionId,sales_tax_cents:paymentRecord.taxCents,payment_subtotal_cents:paymentRecord.subtotalCents,payment_total_cents:paymentRecord.totalCents});state.orders[index]=updated;state.paymentEvents.push(event.id);
+      customer.stripe_customer_id=paymentRecord.stripeCustomerId;Object.assign(updated,{payment_provider:`stripe_${payment.mode}`,stripe_payment_intent_id:paymentRecord.paymentIntentId,stripe_checkout_session_id:paymentRecord.sessionId,sales_tax_cents:paymentRecord.taxCents,payment_subtotal_cents:paymentRecord.subtotalCents,payment_total_cents:paymentRecord.totalCents});state.orders[index]=updated;state.paymentEvents.push(event.id);
       await notifyCustomer(updated,'ready');
       state.audit.push({id:token().slice(0,24),actor:'stripe-test-webhook',at:new Date().toISOString(),path:remotePath,action:'payment_verified',order_id:order.id,prior_status:order.status,new_status:updated.status,request_id:event.id});save();return send(200,{received:true});
      }catch(error){state=JSON.parse(before);fail(409,error.message)}
@@ -204,7 +211,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const agreementRequired=['customer','contractor'].includes(user.role)&&user.agreement_version!==AGREEMENT_VERSION;
    if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:true,disposable,payment:payment?.provider==='stripe'&&payment.mode==='test'?{provider:'stripe',mode:'test',estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:null}});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:payment?.mode!=='live',disposable,payment:payment?.provider==='stripe'?{provider:'stripe',mode:payment.mode,...(payment.mode==='test'?{estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:{})}:null}});
     const proofMatch=path.match(/^\/api\/orders\/([^/]+)\/delivery-proof$/);
     if(proofMatch){
      const order=state.orders.find(item=>item.id===decodeURIComponent(proofMatch[1]));if(!order||!visible(order,user)||!order.delivery_proof_file)fail(404,'Delivery photo not found');
@@ -289,17 +296,17 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
      user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();user.agreement_conditions=[...required];result={user:publicUser(user)};
     }else if(path==='/api/payments/checkout'){
-     if(payment?.provider!=='stripe'||payment.mode!=='test')fail(503,'Test payments are not configured');
+     if(payment?.provider!=='stripe')fail(503,'Payments are not configured');
      if(user.role!=='customer')fail(403,'Customer required');
      const order=state.orders.find(order=>order.id===body.orderId&&order.customer_id===user.id);if(!order)fail(404,'Order not found');
      if(order.status!=='payment_pending'||order.payment_verified)fail(409,'Order is not awaiting payment');
-     if(order.stripe_checkout_session_id)fail(409,'A test checkout is already open for this order');
+     if(order.stripe_checkout_session_id)fail(409,'A checkout is already open for this order');
      const baseAmountCents=Math.round(Number(order.total)*100);if(!Number.isSafeInteger(baseAmountCents)||baseAmountCents<=0)fail(409,'Verified order total required');
-     const pricing=estimateStripeTestCharge(baseAmountCents,payment);
-     const providerIdempotencyKey=hash(`stripe-test:${user.id}:${order.id}:${requestKey}`);
-     const checkout=await createStripeTestCheckout({config:payment,orderId:order.id,customerId:user.id,customerEmail:user.email||'',amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
+     const pricing=payment.mode==='test'?estimateStripeTestCharge(baseAmountCents,payment):{baseAmountCents,estimatedFeeCents:0,totalCents:baseAmountCents};
+     const providerIdempotencyKey=hash(`stripe-${payment.mode}:${user.id}:${order.id}:${requestKey}`);
+     const checkout=await createStripeCheckout({config:payment,orderId:order.id,customerId:user.id,customerEmail:user.email||'',stripeCustomerId:user.stripe_customer_id||'',amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
      order.stripe_checkout_session_id=checkout.sessionId;order.stripe_checkout_base_cents=pricing.baseAmountCents;order.stripe_checkout_fee_cents=pricing.estimatedFeeCents;order.stripe_checkout_total_cents=pricing.totalCents;
-     result={order:publicOrder(order),checkoutUrl:checkout.checkoutUrl,pricing:{currency:'USD',laundrySubtotalCents:pricing.baseAmountCents,estimatedOnlinePaymentCostCents:pricing.estimatedFeeCents,testTotalCents:pricing.totalCents,estimateOnly:true}};
+     result={order:publicOrder(order),checkoutUrl:checkout.checkoutUrl,pricing:{currency:'USD',laundrySubtotalCents:pricing.baseAmountCents,estimatedOnlinePaymentCostCents:pricing.estimatedFeeCents,checkoutSubtotalCents:pricing.totalCents,...(payment.mode==='test'?{testTotalCents:pricing.totalCents}:{}),estimateOnly:payment.mode==='test'}};
     }else if(path==='/api/bag-box/access'){
      if(user.role!=='customer')fail(403,'Customer required');
      if(!boxLockCode)fail(503,'Bag box access is not configured');

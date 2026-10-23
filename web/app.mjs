@@ -544,20 +544,12 @@ function testPaymentPricing(total) {
   const testTotal = Math.ceil((base + fixed) / (1 - rate / 10000));
   return { base, fee: testTotal - base, testTotal };
 }
-function addTestCheckout(card, o) {
-  const pricing = testPaymentPricing(o.total);
-  if (!pricing) return;
-  card.append(
-    node(
-      "p",
-      `TEST MODE ESTIMATE · Laundry $${(pricing.base / 100).toFixed(2)} + estimated online payment cost $${(pricing.fee / 100).toFixed(2)} = $${(pricing.testTotal / 100).toFixed(2)} before tax. Stripe calculates applicable sales tax from the billing address at checkout.`,
-      { class: "note" },
-    ),
-  );
+function addStripeCheckout(card, o) {
+  const testing=paymentPreview?.mode==="test",pricing=testing?testPaymentPricing(o.total):null;
+  card.append(node("p",testing&&pricing?`TEST MODE ESTIMATE · Laundry $${(pricing.base / 100).toFixed(2)} + estimated online payment cost $${(pricing.fee / 100).toFixed(2)} = $${(pricing.testTotal / 100).toFixed(2)} before tax. Stripe calculates applicable sales tax from the billing address at checkout.`:`Secure Stripe checkout · $${Number(o.total).toFixed(2)} before applicable sales tax. Card and Link details stay with Stripe.`,{class:"note"}));
   button(card, "Pay securely with card or Link", async () => {
     const result = await api("/api/payments/checkout", { orderId: o.id });
-    if (result.pricing?.estimateOnly !== true)
-      throw Error("Test payment estimate missing.");
+    if (testing&&result.pricing?.estimateOnly !== true)throw Error("Test payment estimate missing.");
     window.location.assign(result.checkoutUrl);
   });
 }
@@ -658,7 +650,7 @@ async function orders() {
         o.status === "payment_pending" &&
         paymentPreview?.provider === "stripe"
       )
-        addTestCheckout(c, o);
+        addStripeCheckout(c, o);
       else if (["payment_pending", "paid_hold"].includes(o.status))
         c.append(
           node(
@@ -2080,8 +2072,8 @@ try {
     history.replaceState({}, "", location.pathname);
     message(
       checkout === "success"
-        ? "Test checkout returned. Waiting for the verified Stripe test webhook."
-        : "Test checkout canceled. No payment was recorded.",
+        ? "Checkout returned. Waiting for Stripe to confirm the payment."
+        : "Checkout canceled. No payment was recorded.",
       checkout !== "success",
     );
   }

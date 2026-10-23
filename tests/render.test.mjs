@@ -45,6 +45,14 @@ test('persistent Render may use individual account login without an outer access
  assert.throws(()=>runtimeConfig({...environment(),CRC_ACCOUNT_LOGIN_ONLY:'1'}),'disposable storage must not expose reusable accounts');
 });
 
+test('live Stripe fails closed unless storage and individual accounts are production-ready',()=>{
+ const base={...environment(),CRC_PAYMENT_PROVIDER:'stripe_live',STRIPE_SECRET_KEY:'sk_live_1234567890abcdef',STRIPE_WEBHOOK_SECRET:'whsec_1234567890abcdef'};
+ assert.throws(()=>runtimeConfig(base));
+ const live={...base,CRC_DATA_DIR:'/var/data',RENDER_DISK_MOUNT_PATH:'/var/data',CRC_ACCOUNT_LOGIN_ONLY:'1',CRC_LIVE_PAYMENTS:'1',CRC_INITIAL_OWNER_USER:'cotton.owner',CRC_INITIAL_OWNER_PASSWORD:'owner-password-that-is-private'};delete live.CRC_EPHEMERAL_TEST;delete live.CRC_STAGING_USER;delete live.CRC_STAGING_PASSWORD;delete live.CRC_CUSTOMER_PASSWORD;delete live.CRC_CONTRACTOR_PASSWORD;delete live.CRC_OWNER_PASSWORD;
+ const configured=runtimeConfig(live);assert.equal(configured.app.payment.mode,'live');assert.equal(configured.app.fixtures,false);assert.equal(configured.app.privateGate,false);
+ for(const key of ['CRC_DATA_DIR','RENDER_DISK_MOUNT_PATH','CRC_ACCOUNT_LOGIN_ONLY','CRC_LIVE_PAYMENTS','CRC_INITIAL_OWNER_USER','CRC_INITIAL_OWNER_PASSWORD'])assert.throws(()=>runtimeConfig({...live,[key]:''}));
+});
+
 async function harness(t){
  const env=environment(),config=runtimeConfig(env),dir=await mkdtemp(join(tmpdir(),'cotton-render-review-'));
  let app;
