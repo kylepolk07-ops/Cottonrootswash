@@ -9,6 +9,7 @@ let user,
   stopCamera,
   paymentPreview,
   pricingPreview,
+  rewardsPreview,
   agreementVersion,
   managementView = "home",
   managementOrderId = null,
@@ -287,6 +288,7 @@ function login() {
       const me = await api("/api/me");
       paymentPreview = me.staging?.payment || null;
       pricingPreview = me.pricing;
+      rewardsPreview = me.rewards;
       agreementVersion = me.agreement?.version || null;
       user = me.user;
       if(rememberLogin.checked){try{localStorage.setItem(rememberedIdentityKey,JSON.stringify({role:user.role==="customer"?"customer":"contractor",username:user.username}))}catch{}}
@@ -323,9 +325,9 @@ function customerAgreement(parent){
 }
 function customerRegistration(){
  reset();const c=card("👤","Create a Customer account","Complete every field and agreement. Customer accounts activate automatically after successful registration.");
- const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
+ const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),referralCode=field(c,"Friend’s referral username (optional)","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
  username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 12 characters.",{class:"note"}));const accepted=customerAgreement(c);
- button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
+ button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,referralCode:referralCode.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
 }
 function contractorApplication(){
   reset();
@@ -361,6 +363,7 @@ async function render() {
           ["orders", "My laundry"],
           ["book", "New order"],
           ["bags", "My bags"],
+          ["rewards", "Rewards"],
           ["alerts", "Alerts"],
           ["profile", "Profile"],
         ]
@@ -385,6 +388,7 @@ async function render() {
     management: "⚙",
     profile: "👤",
     alerts: "🔔",
+    rewards: "★",
   };
   for (const [k, t] of pages) {
     const tab = button(
@@ -449,6 +453,7 @@ async function render() {
         book: book,
         bags: bags,
         alerts: customerAlerts,
+        rewards: customerRewards,
         profile: profile,
         availability: availability,
         earnings: earnings,
@@ -535,6 +540,7 @@ function summary(c, o) {
         { class: "muted" },
       ),
     );
+  if(o.laundry_notes)c.append(node("p",`Customer care instructions: ${o.laundry_notes}`,{class:"care-instructions"}));
   if(o.service==="full_service"){
     c.append(node("p",`Delivery: ${Number(o.delivery_miles||0).toFixed(1)} round-trip miles · $${Number(o.delivery_fee||0).toFixed(2)} distance fee`,{class:"note"}));
     if(o.pickup_address)c.append(node("p",`Pickup: ${o.pickup_address}\nReturn: ${o.return_address}`,{class:"muted"}));
@@ -571,6 +577,14 @@ async function customerAlerts(){
  for(const event of events){const item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));c.append(item)}
  const push=card("📲","Phone alerts","This installable web app can support phone push notifications without an App Store app. Background push setup and customer permission will be added with the notification service; for now, alerts update inside Cotton Roots when it opens.");
  push.append(node("p","Text messages can remain the backup notification method after registration is approved.",{class:"note"}));
+}
+async function customerRewards(){
+ const me=await api("/api/me");rewardsPreview=me.rewards;
+ const c=card("★","Cotton Roots Rewards","Earn rewards while using the service and when friends become paying customers.");
+ const stats=node("div",undefined,{class:"stat-grid"});stat(stats,rewardsPreview?.points||0,"points");stat(stats,`$${Number(rewardsPreview?.creditDollars||0).toFixed(0)}`,"earned credit");stat(stats,rewardsPreview?.referralPoints||0,"referral points");c.append(stats,node("p",rewardsPreview?.program||"Rewards will appear after verified payments.",{class:"note"}));
+ const code=field(c,"Your referral username","text",rewardsPreview?.referralCode||user.username);code.readOnly=true;code.addEventListener("focus",()=>code.select());
+ button(c,"Copy referral username",async()=>{await navigator.clipboard.writeText(code.value);message("Referral username copied.")},true);
+ c.append(node("p","Reward credit will be available for eligible future checkout after the live payment redemption step is enabled. Points have no cash value and are tied to this account.",{class:"muted"}));
 }
 function contractorReminder(order) {
   if(user?.role!=="contractor"||order.assigned_contractor_id!==user.id||!["accepted","washing"].includes(order.status)||!order.due_at||order.returned_at)return null;
@@ -1010,6 +1024,7 @@ async function book() {
       if(!user.address){d.append(node("p","Add your home or camper address in My profile before booking pickup and return.",{class:"note"}));button(d,"Add my address",()=>route("profile"),true)}
       else d.append(node("p",`Pickup and return address: ${user.address}\nLeave it here: ${user.deliveryInstructions||"Hand directly to me if available."}\nWe calculate the round trip from 307 Locust Street automatically.`,{class:"note"}));
     }
+    const notesLabel=node("label","Special laundry instructions"),laundryNotes=node("textarea");laundryNotes.maxLength=500;laundryNotes.rows=4;laundryNotes.placeholder="Examples: cold water, fragrance-free, hang these shirts, keep this item separate, or contact me before washing.";notesLabel.append(laundryNotes);d.append(notesLabel,node("p","These instructions stay with this order and are shown to the assigned washing specialist.",{class:"muted"}));
     const rush = check(d, "Rush service");
     button(d, "Next: review order", () => {
       if(service==="full_service"&&!user.address)throw Error("Add your home or camper address in My profile first.");
@@ -1020,6 +1035,7 @@ async function book() {
         `${service==="full_service"?"Pickup & return":"Drop off"} · $${Number(prices[service]).toFixed(2)} / lb. ${detergent.selectedOptions[0].textContent}. ${rush.checked ? `Rush service adds $${Number(prices.rushPerLb).toFixed(2)}/lb.` : "Standard service."}`,
       );
       review.prepend(node("p", "STEP 3 OF 3 · REVIEW", { class: "eyebrow" }));
+      if(laundryNotes.value.trim())review.append(node("p",`Special instructions: ${laundryNotes.value.trim()}`,{class:"care-instructions"}));
       review.append(
         node(
           "p",
@@ -1031,6 +1047,7 @@ async function book() {
         const booked=await api("/api/orders", {
           service,
           detergent: detergent.value,
+          laundryNotes: laundryNotes.value,
           rush_requested: rush.checked,
         });
         await route("orders");
@@ -2131,6 +2148,7 @@ try {
   const d = await api("/api/me");
   paymentPreview = d.staging?.payment || null;
   pricingPreview = d.pricing;
+  rewardsPreview = d.rewards;
   agreementVersion = d.agreement?.version || null;
   if (d.staging?.disposable)
     document.querySelector(".staging").textContent =

@@ -42,10 +42,10 @@ async function harness(t) {
  return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
 }
 const denied=r=>assert.ok([400,401,403,404,409,422,501,503].includes(r.status),`Expected denial, received ${r.status}: ${JSON.stringify(r.data)}`);
-async function setupOrder(h,c){
+async function setupOrder(h,c,extra={}){
  const r=await c.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}});
  assert.ok([200,201].includes(r.status),JSON.stringify(r.data));
- const b=await c.request('/api/orders',{method:'POST',body:{service:'dropoff',detergent:'standard',rush_requested:false}});
+ const b=await c.request('/api/orders',{method:'POST',body:{service:'dropoff',detergent:'standard',rush_requested:false,...extra}});
  assert.ok([200,201].includes(b.status),JSON.stringify(b.data));return b.data.order;
 }
 function action(c,id,action,extra={},key){return c.request(`/api/orders/${id}/actions`,{method:'POST',key,body:{action,...extra}})}
@@ -74,12 +74,13 @@ test('contractors submit their own pending login for owner approval',async t=>{
 });
 
 test('customers self-register only after completing every field and agreement',async t=>{
- const h=await harness(t),password='customer-private-pass-123',registration={displayName:'Taylor Customer',phone:'325-555-0188',email:'TAYLOR@example.com',address:'55 Oak Street, Sweetwater, TX',username:'taylor.customer',password,agreed:true,conditions:customerConditions};
+ const h=await harness(t),password='customer-private-pass-123',registration={displayName:'Taylor Customer',phone:'325-555-0188',email:'TAYLOR@example.com',address:'55 Oak Street, Sweetwater, TX',referralCode:'customer',username:'taylor.customer',password,agreed:true,conditions:customerConditions};
  const missingTerms=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...registration,conditions:customerConditions.slice(0,-1)})});assert.equal(missingTerms.status,400);
  const missingAddress=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...registration,address:''})});assert.equal(missingAddress.status,400);
  const created=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(registration)});assert.equal(created.status,201);
  const duplicate=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(registration)});assert.equal(duplicate.status,409);
  const login=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'taylor.customer',password})});assert.equal(login.status,200);const session=await login.json();assert.equal(session.user.role,'customer');assert.equal(session.user.approved,true);assert.equal(session.user.applicationStatus,'approved');assert.equal(session.user.agreementVersion,agreementVersion);assert.equal(session.user.email,'taylor@example.com');
+ const cookie=login.headers.get('set-cookie').split(';')[0],me=await h.anonymous('/api/me',{headers:{cookie}});assert.equal(me.status,200);const account=await me.json();assert.equal(account.rewards.referralCode,'taylor.customer');assert.equal(account.rewards.points,0);
 });
 
 test('customers can review, verify, and later edit their profile',async t=>{
@@ -213,7 +214,7 @@ test('customer complaints are private, persistent and managed by staff',async t=
 
 test('custody workflow rejects forged scans, unpaid pickup, duplicates and competing acceptance',async t=>{
  const h=await harness(t),c=await h.client('customer'),k=await h.client('contractor'),k2=await h.client('contractor2');
- const o=await setupOrder(h,c),scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};
+ const o=await setupOrder(h,c,{laundryNotes:'Cold water. Keep the blue school shirt separate.'}),scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};
  denied(await action(c,o.id,'drop_off',{...scan,bagToken:'forged'}));
  denied(await action(c,o.id,'drop_off',{...scan,stationToken:'forged'}));
  const key=randomUUID();
@@ -230,7 +231,7 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  assert.equal(accepts.filter(r=>r.status===200).length,1,JSON.stringify(accepts));
  const assigned=accepts[0].status===200?k:k2,unassigned=assigned===k?k2:k;
  assert.ok(!(await unassigned.request('/api/orders')).data.orders.some(order=>order.id===o.id));
- const assignedOrder=(await assigned.request('/api/orders')).data.orders.find(order=>order.id===o.id);assert.ok(assignedOrder.customer_name,'Assigned contractor needs the customer name for physical bag verification');assert.equal(assignedOrder.customer_id,undefined,'Internal customer ID stays private');
+ const assignedOrder=(await assigned.request('/api/orders')).data.orders.find(order=>order.id===o.id);assert.ok(assignedOrder.customer_name,'Assigned contractor needs the customer name for physical bag verification');assert.equal(assignedOrder.customer_id,undefined,'Internal customer ID stays private');assert.equal(assignedOrder.laundry_notes,'Cold water. Keep the blue school shirt separate.');
  denied(await action(unassigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1}));
  denied(await action(assigned,o.id,'wall_checkout',scan));
  denied(await action(assigned,o.id,'record_weight',{bagToken:'wrong',measuredPounds:8.1}));
