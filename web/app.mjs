@@ -42,6 +42,9 @@ function node(tag, text, attrs = {}) {
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   return e;
 }
+const fromBase64url=value=>Uint8Array.from(atob(value.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(value.length/4)*4,"=")),char=>char.charCodeAt(0));
+const toBase64url=value=>btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+const credentialJSON=credential=>({id:credential.id,rawId:toBase64url(credential.rawId),type:credential.type,authenticatorAttachment:credential.authenticatorAttachment,clientExtensionResults:credential.getClientExtensionResults(),response:credential.response.attestationObject?{clientDataJSON:toBase64url(credential.response.clientDataJSON),attestationObject:toBase64url(credential.response.attestationObject),transports:credential.response.getTransports?.()||[]}:{clientDataJSON:toBase64url(credential.response.clientDataJSON),authenticatorData:toBase64url(credential.response.authenticatorData),signature:toBase64url(credential.response.signature),userHandle:credential.response.userHandle?toBase64url(credential.response.userHandle):null}});
 function friendlyError(text) {
   return (
     {
@@ -305,6 +308,7 @@ function login() {
       submit.disabled = false;
     }
   });
+  if(app==="contractor"&&window.PublicKeyCredential){button(c,"Use a passkey",async()=>{const name=username.value.trim().toLowerCase();if(!name)throw Error("Enter your Management username first.");const options=await api("/api/passkeys/authentication/options",{username:name});options.challenge=fromBase64url(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(item=>({...item,id:fromBase64url(item.id)}));const credential=await navigator.credentials.get({publicKey:options});if(!credential)throw Error("Passkey sign-in was canceled.");const d=await api("/api/passkeys/authentication/verify",{username:name,credential:credentialJSON(credential)});user=d.user;csrf=d.csrf;page="home";const me=await api("/api/me");paymentPreview=me.staging?.payment||null;pricingPreview=me.pricing;rewardsPreview=me.rewards;agreementVersion=me.agreement?.version||null;user=me.user;await render();message("You are signed in with your passkey.")},true)}
   button(c,app==="customer"?"Create a Customer account":"Apply as a Washing Specialist",app==="customer"?customerRegistration:contractorApplication,true);
   const chooser=node("a","← Choose what you want to do",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
 }
@@ -586,6 +590,9 @@ async function customerRewards(){
  const code=field(c,"Your referral username","text",rewardsPreview?.referralCode||user.username);code.readOnly=true;code.addEventListener("focus",()=>code.select());
  button(c,"Copy referral username",async()=>{await navigator.clipboard.writeText(code.value);message("Referral username copied.")},true);
  c.append(node("p","Reward credit will be available for eligible future checkout after the live payment redemption step is enabled. Points have no cash value and are tied to this account.",{class:"muted"}));
+}
+async function registerManagementPasskey(){
+ if(!window.PublicKeyCredential)throw Error("This browser does not support passkeys.");const options=await api("/api/passkeys/registration/options",{});options.challenge=fromBase64url(options.challenge);options.user={...options.user,id:fromBase64url(options.user.id)};options.excludeCredentials=(options.excludeCredentials||[]).map(item=>({...item,id:fromBase64url(item.id)}));const credential=await navigator.credentials.create({publicKey:options});if(!credential)throw Error("Passkey setup was canceled.");await api("/api/passkeys/registration/verify",{credential:credentialJSON(credential)});message("Passkey added. You can now use Face ID, fingerprint, Windows Hello, or your device PIN to sign in.");
 }
 function contractorReminder(order) {
   if(user?.role!=="contractor"||order.assigned_contractor_id!==user.id||!["accepted","washing"].includes(order.status)||!order.due_at||order.returned_at)return null;
@@ -1413,6 +1420,7 @@ function managementWorkspace(data) {
   stat(stats, (data.orders || []).filter((o) => o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup).length, "Ready for pickup");
   stat(stats, (data.orders || []).filter((o) => o.deadline_alert).length, "Late alerts");
   stat(stats, (data.complaints || []).filter((item) => item.status === "open").length, "Open complaints");
+  if(window.PublicKeyCredential){const security=card("🔐","Fast Management sign-in","Add a passkey to use Face ID, fingerprint, Windows Hello, or your device PIN. Your password remains available for recovery.");button(security,"Add a passkey to this device",registerManagementPasskey)}
   const choices = node("div", undefined, { class: "choice-grid" });
   c.append(choices);
   for (const [key, icon, title, description] of [

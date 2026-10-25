@@ -11,6 +11,7 @@
     "check": "node --check server/app.mjs && node --check server/start.mjs && node --check server/config.mjs && node --check server/bootstrap.mjs && node --check web/app.mjs && node --check web/entry.mjs && node --check shared/management.mjs && node --check server/private-access.mjs && node --check server/stripe-test.mjs && node --check server/twilio.mjs"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.2.2",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4"
   }

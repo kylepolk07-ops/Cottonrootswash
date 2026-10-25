@@ -5,6 +5,7 @@ import {mkdirSync,existsSync,writeFileSync,readFileSync,chmodSync} from 'node:fs
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import QRCode from 'qrcode';
+import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
 import {shopDateKey} from '../shared/calendar.mjs';
 import {shopDueDeadline,SHOP_DUE_NOTE} from '../shared/schedule.mjs';
 import {createPrivateAccess} from './private-access.mjs';
@@ -63,6 +64,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  state.businessCosts??=[];
  state.paymentEvents??=[];
  state.notifications??=[];
+ state.passkeyChallenges??={};
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
  if(!row && fixtures){
   const accounts=['customer','customer2','contractor','contractor2','owner'].map(role=>{
@@ -201,6 +203,18 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;
     send(200,{user:publicUser(u),csrf});return;
    }
+   if(path==='/api/passkeys/authentication/options'&&req.method==='POST'){
+    if(!remoteOrigin)fail(503,'Passkeys require the secure hosted app');
+    const rateKey=`passkey:${req.socket.remoteAddress}`,now=Date.now();let attempt=attempts.get(rateKey);if(!attempt||now-attempt.at>60000)attempt={count:0,at:now};attempts.set(rateKey,attempt);if(++attempt.count>20)fail(429,'Try again later');
+    const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',u=state.users.find(item=>item.username===username&&['owner','staff'].includes(item.role)&&item.active!==false);if(!u?.passkeys?.length)fail(404,'No passkey is registered for this Management account');
+    const rpID=new URL(remoteOrigin).hostname,options=await generateAuthenticationOptions({rpID,allowCredentials:u.passkeys.map(item=>({id:item.id,transports:item.transports||[]})),userVerification:'required',timeout:60000});state.passkeyChallenges[`auth:${u.id}`]={challenge:options.challenge,expires:Date.now()+300000};save();send(200,options);return;
+   }
+   if(path==='/api/passkeys/authentication/verify'&&req.method==='POST'){
+    if(!remoteOrigin)fail(503,'Passkeys require the secure hosted app');
+    const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',u=state.users.find(item=>item.username===username&&['owner','staff'].includes(item.role)&&item.active!==false),credential=u?.passkeys?.find(item=>item.id===body.credential?.id),challenge=u&&state.passkeyChallenges[`auth:${u.id}`];if(!u||!credential||!challenge||challenge.expires<Date.now())fail(401,'Passkey request expired. Try again');
+    let verification;try{verification=await verifyAuthenticationResponse({response:body.credential,expectedChallenge:challenge.challenge,expectedOrigin:remoteOrigin,expectedRPID:new URL(remoteOrigin).hostname,credential:{id:credential.id,publicKey:Buffer.from(credential.publicKey,'base64url'),counter:credential.counter,transports:credential.transports||[]},requireUserVerification:true})}catch{fail(401,'Passkey verification failed')}
+    delete state.passkeyChallenges[`auth:${u.id}`];if(!verification.verified)fail(401,'Passkey verification failed');credential.counter=verification.authenticationInfo.newCounter;const now=Date.now(),sid=token(),csrf=token();db.prepare('DELETE FROM sessions WHERE expires<?').run(now);db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;save();send(200,{user:publicUser(u),csrf});return;
+   }
    if(path==='/api/contractor-applications'&&req.method==='POST'){
     const key=`application:${req.socket.remoteAddress}`,now=Date.now();let a=attempts.get(key);if(!a||now-a.at>3600000)a={count:0,at:now};attempts.set(key,a);if(++a.count>10)fail(429,'Too many applications. Try again later');
     const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',password=typeof body.password==='string'?body.password:'',displayName=typeof body.displayName==='string'?body.displayName.trim():'',phone=typeof body.phone==='string'?body.phone.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
@@ -230,6 +244,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const user=state.users.find(u=>u.id===session.userId);if(!user||user.active===false){if(user)revokeSessions(user.id);fail(401,'Sign in required')}
    const agreementRequired=['customer','contractor'].includes(user.role)&&user.agreement_version!==AGREEMENT_VERSION;
    if(agreementRequired&&!['/api/me','/api/logout','/api/agreements/accept'].includes(path))fail(428,'Agreement acceptance required');
+   if(path==='/api/passkeys/registration/options'&&req.method==='POST'){
+    if(!staff(user))fail(403,'Management access required');if(!remoteOrigin)fail(503,'Passkeys require the secure hosted app');if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');
+    const options=await generateRegistrationOptions({rpName:'Cotton Roots & Company',rpID:new URL(remoteOrigin).hostname,userName:user.username,userID:Buffer.from(user.id),userDisplayName:user.displayName||user.username,attestationType:'none',excludeCredentials:(user.passkeys||[]).map(item=>({id:item.id,transports:item.transports||[]})),authenticatorSelection:{residentKey:'preferred',userVerification:'required'},preferredAuthenticatorType:'localDevice',timeout:60000});state.passkeyChallenges[`register:${user.id}`]={challenge:options.challenge,expires:Date.now()+300000};save();send(200,options);return;
+   }
+   if(path==='/api/passkeys/registration/verify'&&req.method==='POST'){
+    if(!staff(user))fail(403,'Management access required');if(!remoteOrigin)fail(503,'Passkeys require the secure hosted app');if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');const challenge=state.passkeyChallenges[`register:${user.id}`];if(!challenge||challenge.expires<Date.now())fail(401,'Passkey request expired. Try again');
+    let verification;try{verification=await verifyRegistrationResponse({response:body.credential,expectedChallenge:challenge.challenge,expectedOrigin:remoteOrigin,expectedRPID:new URL(remoteOrigin).hostname,requireUserVerification:true})}catch{fail(400,'Passkey registration failed')}
+    delete state.passkeyChallenges[`register:${user.id}`];if(!verification.verified)fail(400,'Passkey registration failed');const registered=verification.registrationInfo.credential;user.passkeys??=[];if(user.passkeys.some(item=>item.id===registered.id))fail(409,'This passkey is already registered');user.passkeys.push({id:registered.id,publicKey:Buffer.from(registered.publicKey).toString('base64url'),counter:registered.counter,transports:body.credential?.response?.transports||[],created_at:new Date().toISOString()});state.audit.push({id:token().slice(0,24),actor:user.id,at:new Date().toISOString(),path,action:'management_passkey_registered'});save();send(200,{registered:true,count:user.passkeys.length});return;
+   }
    if(req.method==='GET'){
     if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,rewards:rewardsFor(user),agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:payment?.mode!=='live',disposable,payment:payment?.provider==='stripe'?{provider:'stripe',mode:payment.mode,...(payment.mode==='test'?{estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:{})}:null}});
     const proofMatch=path.match(/^\/api\/orders\/([^/]+)\/delivery-proof$/);
