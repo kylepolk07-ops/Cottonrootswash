@@ -259,6 +259,15 @@ test('logout revokes session and login throttling rejects credential guessing',a
  assert.equal(last.status,429);
 });
 
+test('management can issue a one-time code to enroll a phone without exposing the password',async t=>{
+ const h=await harness(t),owner=await h.client('owner');
+ const issued=await owner.request('/api/management/phone-setup/code',{method:'POST',body:{}});assert.equal(issued.status,200);assert.match(issued.data.code,/^\d{6}$/);assert.equal(issued.data.expiresInMinutes,10);
+ const wrong=await h.anonymous('/api/management/phone-setup/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'owner',code:'000000'===issued.data.code?'000001':'000000'})});assert.equal(wrong.status,401);
+ const used=await h.anonymous('/api/management/phone-setup/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'owner',code:issued.data.code})});assert.equal(used.status,200);const session=await used.json();assert.equal(session.user.role,'owner');assert.equal(session.mustAddPasskey,true);assert.match(used.headers.get('set-cookie'),/HttpOnly/i);
+ const replay=await h.anonymous('/api/management/phone-setup/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'owner',code:issued.data.code})});assert.equal(replay.status,401);
+ const management=await owner.request('/api/management');assert.ok(!JSON.stringify(management.data).includes(issued.data.code));
+});
+
 test('secure login session survives a safe server restart',async t=>{
  const h=await harness(t),customer=await h.client('customer');
  assert.equal((await customer.request('/api/me')).status,200);

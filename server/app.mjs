@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {randomBytes,scryptSync,timingSafeEqual,createHash} from 'node:crypto';
+import {randomBytes,randomInt,scryptSync,timingSafeEqual,createHash} from 'node:crypto';
 import {mkdirSync,existsSync,writeFileSync,readFileSync,chmodSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -17,6 +17,7 @@ import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
+const sixDigitCode=()=>String(randomInt(0,1000000)).padStart(6,'0');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const AGREEMENT_VERSION='launch-draft-2026-10-23-v2';
 const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1});
@@ -215,6 +216,13 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     let verification;try{verification=await verifyAuthenticationResponse({response:body.credential,expectedChallenge:challenge.challenge,expectedOrigin:remoteOrigin,expectedRPID:new URL(remoteOrigin).hostname,credential:{id:credential.id,publicKey:Buffer.from(credential.publicKey,'base64url'),counter:credential.counter,transports:credential.transports||[]},requireUserVerification:true})}catch{fail(401,'Passkey verification failed')}
     delete state.passkeyChallenges[`auth:${u.id}`];if(!verification.verified)fail(401,'Passkey verification failed');credential.counter=verification.authenticationInfo.newCounter;const now=Date.now(),sid=token(),csrf=token();db.prepare('DELETE FROM sessions WHERE expires<?').run(now);db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;save();send(200,{user:publicUser(u),csrf});return;
    }
+   if(path==='/api/management/phone-setup/login'&&req.method==='POST'){
+    const rateKey=`phone-setup:${req.socket.remoteAddress}`,now=Date.now();let attempt=attempts.get(rateKey);if(!attempt||now-attempt.at>600000)attempt={count:0,at:now};attempts.set(rateKey,attempt);if(++attempt.count>10)fail(429,'Too many attempts. Generate a new phone setup code');
+    const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',code=typeof body.code==='string'?body.code.trim():'',u=state.users.find(item=>item.username===username&&['owner','staff'].includes(item.role)&&item.active!==false),setup=u?.phoneSetup;
+    const supplied=Buffer.from(hash(code)),expected=Buffer.from(setup?.codeHash||hash('unavailable'));
+    if(!/^\d{6}$/.test(code)||!setup||setup.expires<now||supplied.length!==expected.length||!timingSafeEqual(supplied,expected)){if(setup){setup.failed=(setup.failed||0)+1;if(setup.failed>=5)delete u.phoneSetup;save()}fail(401,'That phone setup code is invalid or expired')}
+    delete u.phoneSetup;const sid=token(),csrf=token();db.prepare('DELETE FROM sessions WHERE expires<?').run(now);db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;state.audit.push({id:token().slice(0,24),actor:u.id,at:new Date().toISOString(),path,action:'management_phone_setup_code_used'});save();send(200,{user:publicUser(u),csrf,mustAddPasskey:true});return;
+   }
    if(path==='/api/contractor-applications'&&req.method==='POST'){
     const key=`application:${req.socket.remoteAddress}`,now=Date.now();let a=attempts.get(key);if(!a||now-a.at>3600000)a={count:0,at:now};attempts.set(key,a);if(++a.count>10)fail(429,'Too many applications. Try again later');
     const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',password=typeof body.password==='string'?body.password:'',displayName=typeof body.displayName==='string'?body.displayName.trim():'',phone=typeof body.phone==='string'?body.phone.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
@@ -252,6 +260,9 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(!staff(user))fail(403,'Management access required');if(!remoteOrigin)fail(503,'Passkeys require the secure hosted app');if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');const challenge=state.passkeyChallenges[`register:${user.id}`];if(!challenge||challenge.expires<Date.now())fail(401,'Passkey request expired. Try again');
     let verification;try{verification=await verifyRegistrationResponse({response:body.credential,expectedChallenge:challenge.challenge,expectedOrigin:remoteOrigin,expectedRPID:new URL(remoteOrigin).hostname,requireUserVerification:true})}catch{fail(400,'Passkey registration failed')}
     delete state.passkeyChallenges[`register:${user.id}`];if(!verification.verified)fail(400,'Passkey registration failed');const registered=verification.registrationInfo.credential;user.passkeys??=[];if(user.passkeys.some(item=>item.id===registered.id))fail(409,'This passkey is already registered');user.passkeys.push({id:registered.id,publicKey:Buffer.from(registered.publicKey).toString('base64url'),counter:registered.counter,transports:body.credential?.response?.transports||[],created_at:new Date().toISOString()});state.audit.push({id:token().slice(0,24),actor:user.id,at:new Date().toISOString(),path,action:'management_passkey_registered'});save();send(200,{registered:true,count:user.passkeys.length});return;
+   }
+   if(path==='/api/management/phone-setup/code'&&req.method==='POST'){
+    if(!staff(user))fail(403,'Management access required');if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');const code=sixDigitCode();user.phoneSetup={codeHash:hash(code),expires:Date.now()+10*60000,failed:0};state.audit.push({id:token().slice(0,24),actor:user.id,at:new Date().toISOString(),path,action:'management_phone_setup_code_created'});save();send(200,{code,expiresInMinutes:10});return;
    }
    if(req.method==='GET'){
     if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,rewards:rewardsFor(user),agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:payment?.mode!=='live',disposable,payment:payment?.provider==='stripe'?{provider:'stripe',mode:payment.mode,...(payment.mode==='test'?{estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:{})}:null}});
