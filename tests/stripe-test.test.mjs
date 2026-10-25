@@ -55,7 +55,7 @@ test('hosted Stripe test checkout sends trusted amount and accepts only Stripe t
  assert.equal(result.amountCents,3125);assert.equal(request.url,'https://api.stripe.com/v1/checkout/sessions');assert.equal(request.options.headers.Authorization,`Bearer ${secretKey}`);assert.equal(request.options.headers['Idempotency-Key'],'checkout-order-1');
  assert.equal(new URLSearchParams(request.options.body).get('customer_email'),'customer@example.com');
  const form=new URLSearchParams(request.options.body);assert.equal(form.get('mode'),'payment');assert.equal(form.get('line_items[0][price_data][unit_amount]'),'3125');assert.equal(form.get('metadata[customer_id]'),'customer');assert.ok(!request.options.body.toString().includes(secretKey));
- assert.equal(form.get('automatic_tax[enabled]'),'true');assert.equal(form.get('billing_address_collection'),'required');assert.equal(form.get('line_items[0][price_data][tax_behavior]'),'exclusive');
+ assert.equal(form.has('automatic_tax[enabled]'),false);assert.equal(form.get('billing_address_collection'),'required');assert.equal(form.get('line_items[0][price_data][tax_behavior]'),'exclusive');
  assert.equal(form.get('customer_creation'),'always');
  await assert.rejects(()=>createStripeTestCheckout({config,orderId:'order-1',customerId:'customer',amountCents:3125,idempotencyKey:'checkout-order-1',fetchImpl:async()=>({ok:true,json:async()=>({id:'cs_live_bad',url:'https://attacker.example'})})}));
 });
@@ -69,6 +69,7 @@ test('customer payment setup uses Stripe-hosted setup mode before ordering',asyn
 test('Stripe reconciliation rejects mismatched, unpaid, live-like and duplicate checkout events',()=>{
  const trusted={orderId:'order-1',customerId:'customer',amountCents:3125,currency:'USD',checkoutSessionId:'cs_test_synthetic',processedEventIds:new Set()};
  const record=reconcileStripeCheckout(event(),trusted);assert.equal(record.paymentIntentId,'pi_synthetic');assert.equal(record.stripeCustomerId,'cus_testcustomer1');assert.equal(record.taxCents,258);assert.equal(record.totalCents,3383);
+ const sandboxNoTax=event();sandboxNoTax.id='evt_sandbox_no_tax';sandboxNoTax.data.object.automatic_tax={enabled:false,status:null};sandboxNoTax.data.object.total_details.amount_tax=0;sandboxNoTax.data.object.amount_total=3125;assert.equal(reconcileStripeCheckout(sandboxNoTax,trusted).taxCents,0);
  const mutations=[e=>e.type='payment_intent.succeeded',e=>e.data.object.payment_status='unpaid',e=>e.data.object.status='open',e=>e.data.object.automatic_tax.status='failed',e=>e.data.object.amount_subtotal=1,e=>e.data.object.amount_total=1,e=>e.data.object.currency='cad',e=>e.data.object.client_reference_id='other',e=>e.data.object.metadata.customer_id='other',e=>e.data.object.id='cs_live_bad'];
  for(const mutate of mutations){const changed=event();mutate(changed);assert.throws(()=>reconcileStripeCheckout(changed,trusted))}
  assert.throws(()=>reconcileStripeCheckout(event(),{...trusted,processedEventIds:new Set(['evt_synthetic'])}),/Duplicate/);
