@@ -15,7 +15,6 @@ import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeCheckout,createStripePaymentSetup,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
-import {readScaleWithVision} from './scale-vision.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -39,7 +38,7 @@ async function estimateDeliveryMiles(address){
  }catch{}
  return Number(milesBetween(SHOP_COORDINATES,destination).toFixed(1));
 }
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,scaleVision=null,visionFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin&&privateGate){
   const url=new URL(remoteOrigin);
@@ -191,7 +190,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const origin=req.headers.origin;
     if(origin&&origin!==(remoteOrigin||`http://${req.headers.host}`))fail(403,'Origin rejected');
     if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
-    const bodyLimit=path==='/api/weights/read'?2000000:/^\/api\/orders\/[^/]+\/actions$/.test(path)?750000:16384;
+    const bodyLimit=/^\/api\/orders\/[^/]+\/actions$/.test(path)?750000:16384;
     let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>bodyLimit)fail(413,'Request too large');chunks.push(chunk)}
     try{body=JSON.parse(Buffer.concat(chunks).toString())}catch{fail(400,'Invalid JSON')}
     if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Object required');
@@ -365,10 +364,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    if(state.keys[key]){if(state.keys[key].fingerprint!==fingerprint)fail(409,'Key reused with different request');return send(200,state.keys[key].result)}
    const before=JSON.stringify(state);let result;
    try {
-    if(path==='/api/weights/read'){
-     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');photoPayload(body.photo,'scale reading');if(!scaleVision)fail(503,'Automatic scale reading is not activated. Management must finish the secure vision-reader setup.');let visionWeight=null;try{visionWeight=await readScaleWithVision({config:scaleVision,image:body.photo,fetchImpl:visionFetch})}catch(error){console.error('Scale vision failed:',String(error.message||'unknown').slice(0,160));if(error.status===401)fail(503,'The scale-reader API key was rejected. Management must replace the OpenAI key in Render.');if(error.status===429)fail(503,'The scale-reader account needs OpenAI API billing or additional credits.');if(error.status===403)fail(503,'The OpenAI project does not allow the scale-reader model. Check the API key permissions.');fail(503,'The secure scale reader could not process the request. Management should check the Render logs.')}
-     if(!Number.isFinite(visionWeight))fail(422,'The scale display was not clear enough. Retake a straight, close photo of the blue screen.');result={measuredPounds:visionWeight,confidence:100};
-    }else if(path==='/api/agreements/accept'){
+    if(path==='/api/agreements/accept'){
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
      user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();user.agreement_conditions=[...required];result={user:publicUser(user)};

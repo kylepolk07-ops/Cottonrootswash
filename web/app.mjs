@@ -901,13 +901,13 @@ async function actionWizard(o, action) {
     stage.append(
       node(
         "p",
-        "Place the full laundry bag on the scale, then take one clear photo showing the bag and the complete scale reading. The app will read the weight for you.",
+        "Place the full laundry bag on the scale. Take one clear photo of the complete scale reading, then type that exact number below.",
         { class: "note" },
       ),
     );
     const photoLabel=node("label","Take a close-up photo of the scale display"),photo=node("input",undefined,{type:"file",accept:"image/*",capture:"environment"}),reading=node("p","No photo taken yet.",{class:"weight-output",role:"status"}),weightLabel=node("label","Exact weight shown on scale (lb)"),weightInput=node("input",undefined,{type:"number",min:"0.1",max:"200",step:"0.01",inputmode:"decimal",placeholder:"Example: 14.74",disabled:""});photoLabel.append(photo);weightLabel.append(weightInput);stage.append(photoLabel,node("p","Fill most of the picture with the illuminated number. Keep all digits and the decimal point sharp and free of glare.",{class:"note"}),reading,weightLabel);
-    let photoData="",detectedWeight=null;
-    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Reading the scale photo…";detectedWeight=null;weightInput.value="";weightInput.disabled=true;try{const prepared=await prepareScalePhotos(file);photoData=prepared.proof;const result=await api("/api/weights/read",{photo:prepared.proof,photos:prepared.ocr});detectedWeight=Number(result.measuredPounds);weightInput.value=detectedWeight.toFixed(2);weightInput.disabled=false;reading.textContent=`Scale weight entered: ${detectedWeight.toFixed(2)} lb`;message("The scale number was read and entered automatically. Check it against the photo before confirming.")}catch(error){reading.textContent="The display could not be read from this photo. The selected photo has been kept.";message(error.message,true)}});
+    let photoData="";
+    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Saving the scale photo…";weightInput.value="";weightInput.disabled=true;try{photoData=await prepareDeliveryPhoto(file);reading.textContent="Photo saved. Type the exact weight shown in the photo.";weightInput.disabled=false;weightInput.focus();message("Scale photo saved. Enter the exact displayed weight below.")}catch(error){photo.value="";photoData="";reading.textContent="The photo could not be prepared. Retake it.";message(error.message,true)}});
     stage.append(
       node(
         "p",
@@ -1015,16 +1015,6 @@ async function prepareDeliveryPhoto(file){
   if(!file.type.startsWith("image/")||file.size>12000000)throw Error("Choose a photo smaller than 12 MB.");
   const image=await createImageBitmap(file),scale=Math.min(1,1280/Math.max(image.width,image.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext("2d").drawImage(image,0,0,canvas.width,canvas.height);image.close();
   return canvas.toDataURL("image/jpeg",.72);
-}
-async function prepareScalePhotos(file){
-  if(!file.type.startsWith("image/")||file.size>12000000)throw Error("Choose a photo smaller than 12 MB.");
-  const proof=await prepareDeliveryPhoto(file),image=await createImageBitmap(file),scale=Math.min(1,1280/Math.max(image.width,image.height)),canvas=document.createElement("canvas");
-  canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));const context=canvas.getContext("2d",{willReadFrequently:true});context.drawImage(image,0,0,canvas.width,canvas.height);image.close();
-  const original=context.getImageData(0,0,canvas.width,canvas.height),makeContrast=()=>{const data=new ImageData(new Uint8ClampedArray(original.data),original.width,original.height);for(let i=0;i<data.data.length;i+=4){const gray=.299*data.data[i]+.587*data.data[i+1]+.114*data.data[i+2],value=Math.max(0,Math.min(255,(gray-128)*2.2+128));data.data[i]=data.data[i+1]=data.data[i+2]=value}context.putImageData(data,0,0);return canvas.toDataURL("image/jpeg",.78)};
-  const lcdVariant=()=>{let left=canvas.width,top=canvas.height,right=-1,bottom=-1;for(let y=0;y<original.height;y++)for(let x=0;x<original.width;x++){const i=(y*original.width+x)*4,r=original.data[i],g=original.data[i+1],b=original.data[i+2];if(b>125&&b>r*1.35&&b>g*1.18){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y)}}
-    if(right-left<original.width*.15||bottom-top<original.height*.04)return null;
-    const padX=Math.round((right-left)*.02),padY=Math.round((bottom-top)*.04);left=Math.max(0,left-padX);right=Math.min(original.width-1,right+padX);top=Math.max(0,top-padY);bottom=Math.min(original.height-1,bottom+padY);const width=right-left+1,height=bottom-top+1,out=document.createElement("canvas"),zoom=Math.max(2,Math.min(5,Math.floor(1800/width)));out.width=width*zoom;out.height=height*zoom;const outContext=out.getContext("2d");outContext.imageSmoothingEnabled=false;outContext.drawImage(canvas,left,top,width,height,0,0,out.width,out.height);const pixels=outContext.getImageData(0,0,out.width,out.height);for(let i=0;i<pixels.data.length;i+=4){const r=pixels.data[i],g=pixels.data[i+1],b=pixels.data[i+2],digit=g>145&&g-r>35&&b>150,value=digit?0:255;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=value}outContext.putImageData(pixels,0,0);return out.toDataURL("image/png")};
-  const lcd=lcdVariant();return {proof,ocr:[lcd,makeContrast(),proof].filter(Boolean)};
 }
 async function book() {
   if(!user.paymentMethodReady){const required=card("🔔","Verify payment before ordering","Cotton Roots requires a verified payment method before a new laundry order can be placed.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});button(required,"Go to Action Center",()=>route("alerts"),true);return}

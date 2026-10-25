@@ -1,7 +1,6 @@
 import {resolve} from 'node:path';
 import {stripeConfig} from './stripe-test.mjs';
 import {twilioConfig} from './twilio.mjs';
-import {scaleVisionConfig} from './scale-vision.mjs';
 export function runtimeConfig(env=process.env){
  const provider=env.CRC_DEPLOYMENT;
  const remote=['railway','render'].includes(provider);
@@ -38,5 +37,5 @@ export function runtimeConfig(env=process.env){
  if(payment?.mode==='live'&&(disposable||!accountLoginOnly||env.CRC_LIVE_PAYMENTS!=='1'))throw Error('Live Stripe requires persistent storage, individual account login, and CRC_LIVE_PAYMENTS=1');
  let initialOwner=null;if(payment?.mode==='live'){const username=String(env.CRC_INITIAL_OWNER_USER||'').trim().toLowerCase(),password=String(env.CRC_INITIAL_OWNER_PASSWORD||'');if(!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(username)||password.length<24||password.length>256)throw Error('Live Stripe requires a first owner username and 24–256 character password');initialOwner={username,password}}
  if(env.CRC_BOX_LOCK_CODE!==undefined&&!/^\d{4}$/.test(env.CRC_BOX_LOCK_CODE))throw Error('Box lock code must be exactly four digits');
- return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:payment?.mode!=='live',initialOwner,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,privateGate:!accountLoginOnly,fixturePasswords,disposable,payment,notifications:twilioConfig(env),scaleVision:scaleVisionConfig(env),boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
+ return {host:'0.0.0.0',port,app:{dataDir:resolve(provider==='railway'?'/data':renderPersistent?'/var/data':'/tmp/cotton-roots-trial'),fixtures:payment?.mode!=='live',initialOwner,remoteOrigin,stagingUser:env.CRC_STAGING_USER,stagingPassword:env.CRC_STAGING_PASSWORD,privateGate:!accountLoginOnly,fixturePasswords,disposable,payment,notifications:twilioConfig(env),boxLockCode:env.CRC_BOX_LOCK_CODE||null}};
 }
