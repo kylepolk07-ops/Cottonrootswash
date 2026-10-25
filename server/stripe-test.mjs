@@ -13,10 +13,12 @@ export function stripeConfig(env=process.env,origin){
  const webhookSecret=String(mode==='live'?env.STRIPE_LIVE_WEBHOOK_SECRET||env.STRIPE_WEBHOOK_SECRET:env.STRIPE_WEBHOOK_SECRET||'').trim();
  if(!new RegExp(`^(?:sk|rk)_${mode}_\\S{8,}$`).test(secretKey))throw Error(`A Stripe ${mode} secret or restricted key is required`);
  if(!/^whsec_[A-Za-z0-9_]{16,}$/.test(webhookSecret))throw Error(`A Stripe ${mode} webhook signing secret is required`);
- if(mode==='live')return {provider:'stripe',mode,origin,secretKey,webhookSecret};
+ const connect=env.CRC_STRIPE_CONNECT==='1';
+ if(connect&&mode!=='live')throw Error('Stripe Connect onboarding is enabled only for live payments');
+ if(mode==='live')return {provider:'stripe',mode,origin,secretKey,webhookSecret,connect};
  const feeBps=Number(env.CRC_STRIPE_TEST_FEE_BPS),feeFixedCents=Number(env.CRC_STRIPE_TEST_FEE_FIXED_CENTS);
  if(!Number.isInteger(feeBps)||feeBps<0||feeBps>1000||!Number.isInteger(feeFixedCents)||feeFixedCents<0||feeFixedCents>500)throw Error('Explicit Stripe test fee estimate required');
- return {provider:'stripe',mode,origin,secretKey,webhookSecret,feeBps,feeFixedCents};
+ return {provider:'stripe',mode,origin,secretKey,webhookSecret,feeBps,feeFixedCents,connect:false};
 }
 export const stripeTestConfig=stripeConfig;
 

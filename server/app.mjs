@@ -13,6 +13,7 @@ import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal,deliveryFee,contractorPayBreakdown} from '../shared/rules.mjs';
 import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
+import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
@@ -95,7 +96,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
  const proofDir=resolve(dataDir,'delivery-proofs');mkdirSync(proofDir,{recursive:true,mode:0o700});
  const rewardsFor=u=>{if(u.role!=='customer')return null;const paid=state.orders.filter(order=>order.customer_id===u.id&&order.payment_verified),purchasePoints=paid.reduce((sum,order)=>sum+Math.floor(Number(order.payment_total_cents||Math.round(Number(order.total||0)*100))/100),0),qualified=u.referred_by&&paid.length?50:0,referralPoints=state.users.filter(other=>other.role==='customer'&&other.referred_by===u.id&&state.orders.some(order=>order.customer_id===other.id&&order.payment_verified)).length*50,points=purchasePoints+qualified+referralPoints;return {points,purchasePoints,referralPoints:qualified+referralPoints,creditDollars:Math.floor(points/100)*5,referralCode:u.username,program:'1 point per paid dollar. After a referred customer’s first paid order, both customers receive 50 points. Every 100 points earns a $5 credit.'}};
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',smsConsent:u.sms_consent===true,smsConsentAt:u.sms_consent_at||null,profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',smsConsent:u.sms_consent===true,smsConsentAt:u.sms_consent_at||null,profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null,payoutOnboardingComplete:u.payout_onboarding_complete===true});
  const staff=u=>['owner','staff'].includes(u.role);
  const payoutState=o=>{if(o.contractor_payout_status==='paid')return {status:'paid',eligibleAt:o.contractor_paid_at||null};if(!o.payment_verified||!o.paid_at)return {status:'waiting_for_customer_payment',eligibleAt:null};const eligibleAt=new Date(Date.parse(o.paid_at)+24*3600000).toISOString();return {status:Date.now()>=Date.parse(eligibleAt)?'ready':'clearing',eligibleAt}};
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
@@ -270,7 +271,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(!staff(user))fail(403,'Management access required');if(req.headers['x-csrf-token']!==session.csrf)fail(403,'CSRF token required');const code=sixDigitCode();user.phoneSetup={codeHash:hash(code),expires:Date.now()+10*60000,failed:0};state.audit.push({id:token().slice(0,24),actor:user.id,at:new Date().toISOString(),path,action:'management_phone_setup_code_created'});save();send(200,{code,expiresInMinutes:10});return;
    }
    if(req.method==='GET'){
-    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,rewards:rewardsFor(user),agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:payment?.mode!=='live',disposable,payment:payment?.provider==='stripe'?{provider:'stripe',mode:payment.mode,...(payment.mode==='test'?{estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:{})}:null}});
+    if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,rewards:rewardsFor(user),agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:payment?.mode!=='live',disposable,payment:payment?.provider==='stripe'?{provider:'stripe',mode:payment.mode,connect:payment.connect===true,...(payment.mode==='test'?{estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:{})}:null}});
+    if(path==='/api/contractor-onboarding'){
+     if(user.role!=='contractor')fail(403,'Washing Specialist required');if(!payment?.connect)return send(200,{enabled:false,status:{started:false,complete:false}});
+     const status=await connectedAccountStatus({config:payment,accountId:user.stripe_connected_account_id,fetchImpl:stripeFetch});if(status.complete&&!user.payout_onboarding_complete){user.payout_onboarding_complete=true;user.payout_onboarding_completed_at=new Date().toISOString();save()}return send(200,{enabled:true,status});
+    }
     const proofMatch=path.match(/^\/api\/orders\/([^/]+)\/delivery-proof$/);
     if(proofMatch){
      const order=state.orders.find(item=>item.id===decodeURIComponent(proofMatch[1]));if(!order||!visible(order,user)||!order.delivery_proof_file)fail(404,'Delivery photo not found');
@@ -354,6 +359,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
      user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();user.agreement_conditions=[...required];result={user:publicUser(user)};
+    }else if(path==='/api/contractor-onboarding/start'){
+     if(user.role!=='contractor')fail(403,'Washing Specialist required');if(!payment?.connect)fail(503,'Stripe payout onboarding is not enabled');if(!user.displayName||!user.email)fail(400,'Save your name and email before payout setup');
+     if(!user.stripe_connected_account_id)user.stripe_connected_account_id=await createConnectedAccount({config:payment,user,idempotencyKey:hash(`connect:${user.id}`),fetchImpl:stripeFetch});
+     const onboardingUrl=await createConnectOnboardingLink({config:payment,accountId:user.stripe_connected_account_id,fetchImpl:stripeFetch});result={onboardingUrl};
     }else if(path==='/api/payments/checkout'){
      if(payment?.provider!=='stripe')fail(503,'Payments are not configured');
      if(user.role!=='customer')fail(403,'Customer required');
@@ -519,7 +528,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const wallStationVerified=typeof body.stationToken==='string'&&body.stationToken===state.stationToken;
      const customerActions=[ACTION.DROP_OFF,ACTION.PICKUP,'rate'];const contractorActions=[ACTION.ACCEPT,ACTION.WEIGH,ACTION.CHECK_OUT,ACTION.WASH_COMPLETE,ACTION.RETURN_BAG,ACTION.CHECK_IN];
      if(customerActions.includes(action)){if(user.role!=='customer'||o.customer_id!==user.id)fail(403,'Order owner required')}
-     else if(contractorActions.includes(action)){if(user.role!=='contractor'||!user.approved)fail(403,'Approved contractor required');if(action!==ACTION.ACCEPT&&o.assigned_contractor_id!==user.id)fail(403,'Assigned contractor required')}
+     else if(contractorActions.includes(action)){if(user.role!=='contractor'||!user.approved)fail(403,'Approved contractor required');if(action===ACTION.ACCEPT&&payment?.connect&&!user.payout_onboarding_complete)fail(403,'Complete tax, identity, and bank payout setup before accepting work');if(action!==ACTION.ACCEPT&&o.assigned_contractor_id!==user.id)fail(403,'Assigned contractor required')}
      else if(action===ACTION.RELEASE){if(!staff(user))fail(403,'Staff required')}
      else fail(403,'Action unavailable; payments are not connected');
      if(action===ACTION.ACCEPT){const today=shopDateKey();if(!user.days.includes(today)||!['both',o.service].includes(user.preference))fail(409,'Set matching availability for today first')}

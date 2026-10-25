@@ -4,7 +4,7 @@ import {createHmac} from 'node:crypto';
 import {stripeConfig,stripeTestConfig,estimateStripeTestCharge,verifyStripeSignature,createStripeCheckout,createStripeTestCheckout,reconcileStripeCheckout} from '../server/stripe-test.mjs';
 
 const origin='https://cotton-test.example',secretKey='sk_test_1234567890abcdef',webhookSecret='whsec_1234567890abcdef';
-const config={provider:'stripe',mode:'test',origin,secretKey,webhookSecret,feeBps:290,feeFixedCents:30};
+const config={provider:'stripe',mode:'test',origin,secretKey,webhookSecret,feeBps:290,feeFixedCents:30,connect:false};
 const env={CRC_PAYMENT_PROVIDER:'stripe_test',STRIPE_SECRET_KEY:secretKey,STRIPE_WEBHOOK_SECRET:webhookSecret,CRC_STRIPE_TEST_FEE_BPS:'290',CRC_STRIPE_TEST_FEE_FIXED_CENTS:'30'};
 const event=()=>({id:'evt_synthetic',type:'checkout.session.completed',data:{object:{object:'checkout.session',id:'cs_test_synthetic',mode:'payment',payment_status:'paid',status:'complete',automatic_tax:{status:'complete'},client_reference_id:'order-1',metadata:{order_id:'order-1',customer_id:'customer'},customer:'cus_testcustomer1',amount_subtotal:3125,total_details:{amount_tax:258},amount_total:3383,currency:'usd',payment_intent:'pi_synthetic'}}});
 
@@ -23,6 +23,11 @@ test('Stripe live mode is explicit and does not add a processing-fee line item',
  const form=new URLSearchParams(request.options.body);assert.equal(form.get('line_items[0][price_data][unit_amount]'),'3000');assert.equal(form.has('line_items[1][quantity]'),false);assert.equal(form.get('automatic_tax[enabled]'),'true');
  const liveEvent=event();liveEvent.data.object.id='cs_live_ready123';liveEvent.data.object.customer='cus_livecustomer1';liveEvent.data.object.amount_subtotal=3000;liveEvent.data.object.amount_total=3258;
  const record=reconcileStripeCheckout(liveEvent,{orderId:'order-1',customerId:'customer',amountCents:3000,checkoutSessionId:'cs_live_ready123',mode:'live'});assert.equal(record.taxCents,258);assert.equal(record.totalCents,3258);
+});
+
+test('Stripe Connect contractor onboarding requires explicit live enablement',()=>{
+ assert.throws(()=>stripeConfig({...env,CRC_STRIPE_CONNECT:'1'},origin),/live payments/);
+ const live=stripeConfig({CRC_PAYMENT_PROVIDER:'stripe_live',STRIPE_SECRET_KEY:'sk_live_1234567890abcdef',STRIPE_WEBHOOK_SECRET:webhookSecret,CRC_STRIPE_CONNECT:'1'},origin);assert.equal(live.connect,true);
 });
 
 test('Stripe live mode prefers separately staged live secrets',()=>{

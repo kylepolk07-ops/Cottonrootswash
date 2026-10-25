@@ -449,7 +449,7 @@ async function render() {
     );
     return;
   }
-  if(app==="contractor"&&user.role==="contractor"&&!user.approved)return pendingContractor();
+  if(app==="contractor"&&user.role==="contractor"&&(!user.approved||paymentPreview?.connect&&!user.payoutOnboardingComplete))return pendingContractor();
   try {
     await (
       {
@@ -471,11 +471,14 @@ async function render() {
     message(e.message, true);
   }
 }
-function pendingContractor(){
+async function pendingContractor(){
   reset();nav.hidden=true;document.querySelector("footer").hidden=true;
-  const c=card("⏳","Application pending","Your login works. Management must speak with you by phone and meet you at the shop before you can view or accept laundry jobs.");
+  const onboarding=await api("/api/contractor-onboarding"),needsPayout=onboarding.enabled&&!onboarding.status.complete;
+  const c=card(needsPayout?"💳":"⏳",needsPayout?"Complete your payout setup":"Application pending",needsPayout?"Stripe securely collects your tax information, verifies your identity, and connects your bank account. Cotton Roots does not receive your Social Security number, ID image, or bank account number.":"Your login works. Management must speak with you by phone and meet you at the shop before you can view or accept laundry jobs.");
   const name=field(c,"Full name","text",user.displayName||""),phone=field(c,"Phone number","tel",user.phone||""),email=field(c,"Email","email",user.email||"");
   button(c,"Save contact information",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value});user=result.user;message("Contact information saved.")},true);
+  if(needsPayout){const steps=node("div",undefined,{class:"bag-card"});steps.append(node("strong","Required before accepting jobs"),node("p","• W-9 tax information\n• Government ID verification\n• Bank account for payouts",{class:"muted"}));c.append(steps);button(c,onboarding.status.started?"Continue secure Stripe setup":"Start secure Stripe setup",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)});button(c,"I finished Stripe setup — refresh status",async()=>{await route("home")},true)}
+  if(!user.approved)c.append(node("p","Management must also complete your phone call and in-person shop meeting before work access is approved.",{class:"note"}));
 }
 function agreement() {
   reset();
