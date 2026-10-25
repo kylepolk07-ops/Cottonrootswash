@@ -1873,10 +1873,12 @@ function choice(parent, icon, title, description, fn) {
   );
   return b;
 }
-function stat(parent, value, label) {
-  const c = node("div", undefined, { class: "stat" });
+function stat(parent, value, label, onSelect=null) {
+  const c = node(onSelect?"button":"div", undefined, { class: onSelect?"stat stat-button":"stat" });
   c.append(node("strong", value), node("span", label));
+  if(onSelect){c.type="button";c.setAttribute("aria-label",`${label}: ${value}. Open ${label}.`);c.addEventListener("click",onSelect)}
   parent.append(c);
+  return c;
 }
 function stepLabel(action) {
   return (
@@ -2003,6 +2005,7 @@ async function home() {
     counts,
     customer ? dashboard.activeOrders : dashboard.activeJobs,
     customer ? "In progress" : "Active jobs",
+    customer?null:()=>route("orders"),
   );
   stat(
     counts,
@@ -2015,11 +2018,13 @@ async function home() {
         ).length
       : dashboard.availableDays,
     customer ? "Ready to collect" : "Available days",
+    customer?null:()=>route("availability"),
   );
   stat(
     counts,
     customer ? dashboard.bagCount : dashboard.offers,
     customer ? "My bags" : "Available offers",
+    customer?null:()=>route("offers"),
   );
   const actions = node("div", undefined, { class: "choice-grid" });
   intro.append(actions);
