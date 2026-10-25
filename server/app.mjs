@@ -15,8 +15,7 @@ import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeCheckout,createStripePaymentSetup,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
-import {chooseScaleWeight} from './weight-reading.mjs';
-import {createWorker,OEM,PSM} from 'tesseract.js';
+import {readScaleWithVision} from './scale-vision.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -27,8 +26,6 @@ const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extr
 const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'],contractor:['platform_role','independent_business','custody_care','deadline_scans','smartphone_required','legal_draft']};
 const SHOP_COORDINATES={latitude:32.47095,longitude:-100.40594};
 const milesBetween=(a,b)=>{const radians=value=>value*Math.PI/180,dLat=radians(b.latitude-a.latitude),dLon=radians(b.longitude-a.longitude),lat1=radians(a.latitude),lat2=radians(b.latitude),h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))};
-let weightReaderPromise;
-const weightReader=()=>weightReaderPromise??=createWorker('eng',OEM.LSTM_ONLY,{langPath:resolve(root,'node_modules/@tesseract.js-data/eng/4.0.0'),gzip:true,cacheMethod:'none'}).then(async worker=>{await worker.setParameters({tessedit_char_whitelist:'0123456789.',tessedit_pageseg_mode:PSM.SINGLE_LINE,user_defined_dpi:'300'});return worker});
 const photoPayload=(value,label)=>{const match=typeof value==='string'&&value.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/);if(!match)fail(400,`Take a clear photo of the ${label}`);const bytes=Buffer.from(match[2],'base64');if(bytes.length<1000||bytes.length>500000)fail(400,`${label} photo must be between 1 KB and 500 KB`);if(match[1]==='image/jpeg'&&!(bytes[0]===0xff&&bytes[1]===0xd8)||match[1]==='image/png'&&!(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47))fail(400,`Invalid ${label} photo`);return {bytes,type:match[1]}};
 async function estimateDeliveryMiles(address){
  const signal=AbortSignal.timeout(8000),query=new URLSearchParams({address,benchmark:'Public_AR_Current',format:'json'});
@@ -42,7 +39,7 @@ async function estimateDeliveryMiles(address){
  }catch{}
  return Number(milesBetween(SHOP_COORDINATES,destination).toFixed(1));
 }
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,scaleVision=null,visionFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin&&privateGate){
   const url=new URL(remoteOrigin);
@@ -369,8 +366,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const before=JSON.stringify(state);let result;
    try {
     if(path==='/api/weights/read'){
-     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const submitted=Array.isArray(body.photos)?body.photos.slice(0,4):[body.photo],photos=submitted.map(value=>photoPayload(value,'scale reading'));const readings=[];try{const worker=await weightReader();for(let index=0;index<photos.length;index++){const recognized=await worker.recognize(photos[index].bytes),reading=chooseScaleWeight(recognized);if(reading)readings.push({...reading,score:reading.score+(index===0?35:0)})}}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
-     readings.sort((a,b)=>b.score-a.score);const reading=readings[0];if(!reading)fail(422,'The scale number could not be read. Fill the photo with the illuminated display, avoid glare, and retake it');result={measuredPounds:reading.value,confidence:Math.round(reading.confidence||0)};
+     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');photoPayload(body.photo,'scale reading');if(!scaleVision)fail(503,'Automatic scale reading is not activated. Management must finish the secure vision-reader setup.');let visionWeight=null;try{visionWeight=await readScaleWithVision({config:scaleVision,image:body.photo,fetchImpl:visionFetch})}catch(error){console.error('Scale vision failed:',String(error.message||'unknown').slice(0,160));fail(503,'The secure scale reader is temporarily unavailable. Retake the photo and try again.')}
+     if(!Number.isFinite(visionWeight))fail(422,'The scale display was not clear enough. Retake a straight, close photo of the blue screen.');result={measuredPounds:visionWeight,confidence:100};
     }else if(path==='/api/agreements/accept'){
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
