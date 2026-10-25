@@ -19,7 +19,7 @@ titles=(
   "Cotton Roots & Company"
 )
 bodies=(
-  "Walk in from 9 AM to 5 PM. For access between 5 PM and 9 PM, call 903-426-1543 before arriving."
+  "Regular hours are 9 AM to 5 PM, with extended access from 5 PM to 9 PM by calling 903-426-1543."
   "Register in the app and keep your contact and service address up to date."
   "Choose drop-off or pickup and return. Add detergent choices and special care notes."
   "At 307 Locust Street, scan the bag and confirm that you are dropping off dirty laundry."

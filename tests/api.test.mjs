@@ -58,6 +58,7 @@ test('installable app assets have safe mobile metadata and correct content types
  for(const [path,type] of [['/web/brand-mark.png','image/png'],['/web/icon-192.png','image/png'],['/web/icon-512.png','image/png'],['/web/apple-touch-icon.png','image/png'],['/web/service-worker.js','text/javascript']]){
   const response=await h.anonymous(path);assert.equal(response.status,200,path);assert.match(response.headers.get('content-type'),new RegExp(`^${type.replace('/','\\/')}`),path);
  }
+ const video=await h.anonymous('/web/how-cotton-roots-works.mp4',{headers:{range:'bytes=0-1023'}});assert.equal(video.status,206);assert.match(video.headers.get('content-type'),/^video\/mp4/);assert.equal(video.headers.get('accept-ranges'),'bytes');assert.match(video.headers.get('content-range'),/^bytes 0-1023\//);assert.equal((await video.arrayBuffer()).byteLength,1024);
  const home=await h.anonymous('/');assert.match(await home.text(),/rel="manifest" href="\/web\/manifest\.webmanifest"/);
 });
 

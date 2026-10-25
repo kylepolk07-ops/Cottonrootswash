@@ -172,7 +172,12 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const contentTypes={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.png':'image/png','.svg':'image/svg+xml; charset=utf-8','.mp4':'video/mp4','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8'};
     const extension=file.includes('.')?`.${file.split('.').at(-1)}`:'';
     headers['Content-Type']=contentTypes[extension]||'text/html; charset=utf-8';
-    res.writeHead(200,headers);res.end(readFileSync(resolve(root,file)));return;
+    const contents=readFileSync(resolve(root,file));headers['Content-Length']=String(contents.length);
+    if(extension==='.mp4'){
+     headers['Accept-Ranges']='bytes';const range=req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
+     if(range){const start=range[1]?Number(range[1]):0,end=range[2]?Number(range[2]):contents.length-1;if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start||start>=contents.length){headers['Content-Range']=`bytes */${contents.length}`;delete headers['Content-Length'];res.writeHead(416,headers);res.end();return}const last=Math.min(end,contents.length-1);headers['Content-Range']=`bytes ${start}-${last}/${contents.length}`;headers['Content-Length']=String(last-start+1);res.writeHead(206,headers);res.end(contents.subarray(start,last+1));return}
+    }
+    res.writeHead(200,headers);res.end(contents);return;
    }
    if(!['GET','POST'].includes(req.method))fail(405,'Method not allowed');
    let body={};
