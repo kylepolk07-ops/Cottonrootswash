@@ -63,7 +63,7 @@ test('hosted Stripe test checkout sends trusted amount and accepts only Stripe t
 test('customer payment setup uses Stripe-hosted setup mode before ordering',async()=>{
  let request;const fetchImpl=async(url,options)=>{request={url,options};return {ok:true,json:async()=>({id:'cs_test_setup123',url:'https://checkout.stripe.com/c/setup/cs_test_setup123'})}};
  const result=await createStripePaymentSetup({config,customerId:'customer',customerEmail:'customer@example.com',idempotencyKey:'payment-profile-customer',fetchImpl});assert.equal(result.sessionId,'cs_test_setup123');
- const form=new URLSearchParams(request.options.body);assert.equal(form.get('mode'),'setup');assert.equal(form.get('metadata[purpose]'),'customer_payment_setup');assert.equal(form.get('metadata[customer_id]'),'customer');assert.equal(form.get('payment_method_types[0]'),'card');assert.equal(form.get('customer_email'),'customer@example.com');assert.equal(form.has('line_items[0][quantity]'),false);
+ const form=new URLSearchParams(request.options.body);assert.equal(form.get('mode'),'setup');assert.equal(form.get('metadata[purpose]'),'customer_payment_setup');assert.equal(form.get('metadata[customer_id]'),'customer');assert.equal(form.has('payment_method_types[0]'),false);assert.equal(form.get('customer_email'),'customer@example.com');assert.equal(form.has('line_items[0][quantity]'),false);
 });
 
 test('Stripe reconciliation rejects mismatched, unpaid, live-like and duplicate checkout events',()=>{
