@@ -28,7 +28,7 @@ const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_servi
 const SHOP_COORDINATES={latitude:32.47095,longitude:-100.40594};
 const milesBetween=(a,b)=>{const radians=value=>value*Math.PI/180,dLat=radians(b.latitude-a.latitude),dLon=radians(b.longitude-a.longitude),lat1=radians(a.latitude),lat2=radians(b.latitude),h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))};
 let weightReaderPromise;
-const weightReader=()=>weightReaderPromise??=createWorker('eng',OEM.LSTM_ONLY,{langPath:resolve(root,'node_modules/@tesseract.js-data/eng/4.0.0'),gzip:true,cacheMethod:'none'}).then(async worker=>{await worker.setParameters({tessedit_char_whitelist:'0123456789.',tessedit_pageseg_mode:PSM.SPARSE_TEXT});return worker});
+const weightReader=()=>weightReaderPromise??=createWorker('eng',OEM.LSTM_ONLY,{langPath:resolve(root,'node_modules/@tesseract.js-data/eng/4.0.0'),gzip:true,cacheMethod:'none'}).then(async worker=>{await worker.setParameters({tessedit_char_whitelist:'0123456789.',tessedit_pageseg_mode:PSM.SINGLE_LINE,user_defined_dpi:'300'});return worker});
 const photoPayload=(value,label)=>{const match=typeof value==='string'&&value.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/);if(!match)fail(400,`Take a clear photo of the ${label}`);const bytes=Buffer.from(match[2],'base64');if(bytes.length<1000||bytes.length>500000)fail(400,`${label} photo must be between 1 KB and 500 KB`);if(match[1]==='image/jpeg'&&!(bytes[0]===0xff&&bytes[1]===0xd8)||match[1]==='image/png'&&!(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47))fail(400,`Invalid ${label} photo`);return {bytes,type:match[1]}};
 async function estimateDeliveryMiles(address){
  const signal=AbortSignal.timeout(8000),query=new URLSearchParams({address,benchmark:'Public_AR_Current',format:'json'});
@@ -194,7 +194,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const origin=req.headers.origin;
     if(origin&&origin!==(remoteOrigin||`http://${req.headers.host}`))fail(403,'Origin rejected');
     if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
-    const bodyLimit=/^\/api\/orders\/[^/]+\/actions$/.test(path)||path==='/api/weights/read'?750000:16384;
+    const bodyLimit=path==='/api/weights/read'?2000000:/^\/api\/orders\/[^/]+\/actions$/.test(path)?750000:16384;
     let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>bodyLimit)fail(413,'Request too large');chunks.push(chunk)}
     try{body=JSON.parse(Buffer.concat(chunks).toString())}catch{fail(400,'Invalid JSON')}
     if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Object required');
@@ -369,8 +369,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const before=JSON.stringify(state);let result;
    try {
     if(path==='/api/weights/read'){
-     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const photo=photoPayload(body.photo,'scale reading');let recognized;try{recognized=await (await weightReader()).recognize(photo.bytes)}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
-     const reading=chooseScaleWeight(recognized);if(!reading)fail(422,'The scale number could not be read. Move closer, avoid glare, and retake the photo');result={measuredPounds:reading.value,confidence:Math.round(reading.confidence||recognized.data.confidence||0)};
+     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const submitted=Array.isArray(body.photos)?body.photos.slice(0,3):[body.photo],photos=submitted.map(value=>photoPayload(value,'scale reading'));const readings=[];try{const worker=await weightReader();for(const photo of photos){const recognized=await worker.recognize(photo.bytes),reading=chooseScaleWeight(recognized);if(reading)readings.push(reading)}}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
+     readings.sort((a,b)=>b.score-a.score);const reading=readings[0];if(!reading)fail(422,'The scale number could not be read. Fill the photo with the illuminated display, avoid glare, and retake it');result={measuredPounds:reading.value,confidence:Math.round(reading.confidence||0)};
     }else if(path==='/api/agreements/accept'){
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
