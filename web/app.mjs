@@ -368,12 +368,10 @@ async function render() {
           ["home", "Home"],
           ["orders", "My laundry"],
           ["bags", "My bags"],
-          ["alerts", "Alerts"],
           ["profile", "Profile"],
         ]
       : [
           ["home", "Today"],
-          ["alerts", "Alerts"],
           ["availability", "Availability"],
           ["offers", "Offers"],
           ["orders", "My jobs"],
@@ -414,6 +412,20 @@ async function render() {
   const identity=node("div",undefined,{class:"signed-in-as"});
   identity.append(node("small","SIGNED IN AS"),node("strong",user.displayName||user.username),node("span",user.role==="contractor"?"Washing Specialist":user.role==="customer"?"Customer":"Management"));
   account.append(identity);
+  const alertButton=button(account,"🔔",()=>route("alerts"),true);
+  alertButton.classList.add("header-alert");alertButton.setAttribute("aria-label","Open alerts");alertButton.title="Open alerts";
+  try{
+    const {orders=[]}=await api("/api/orders");let unread=0;
+    if(user.role==="customer"){
+      const updates=[];
+      for(const order of orders)for(const [at,title] of [[order.picked_up_at,"Laundry collected"],[order.paid_at,"Payment confirmed"],[order.returned_at||order.delivered_at,"Laundry returned"],[order.wash_completed_at,"Washing completed"],[order.checked_out_at,"Picked up for washing"],[order.dropped_at,"Checked in at the shop"]])if(at)updates.push(`customer:${order.id}:${title}:${at}`);
+      unread=updates.filter(id=>!user.notificationAcks?.includes(id)).length+(!user.paymentMethodReady?1:0);
+    }else if(user.role==="contractor"){
+      unread=orders.filter(order=>order.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(order.status)&&!user.notificationAcks?.includes(`job:${order.id}:${order.status}:${order.due_at||''}`)).length;
+      if(paymentPreview?.connect&&!user.payoutOnboardingComplete)unread++;
+    }
+    if(unread)alertButton.append(node("span",unread>9?"9+":String(unread),{class:"alert-badge","aria-label":`${unread} unread alerts`}));
+  }catch{}
   button(
     account,
     "Sign out",
@@ -428,6 +440,7 @@ async function render() {
     },
     true,
   );
+  account.append(alertButton);
   if (app === "customer" && user.role !== "customer") {
     card(
       "🌱",
@@ -901,7 +914,7 @@ async function actionWizard(o, action) {
     );
     const photoLabel=node("label","Take scale photo"),photo=node("input",undefined,{type:"file",accept:"image/*",capture:"environment"}),reading=node("p","No photo taken yet.",{class:"weight-output",role:"status"}),weightLabel=node("label","Weight shown on scale (lb)"),weightInput=node("input",undefined,{type:"number",min:"0.1",max:"200",step:"0.01",inputmode:"decimal",placeholder:"Example: 14.76",disabled:""});photoLabel.append(photo);weightLabel.append(weightInput);stage.append(photoLabel,node("p","Move close enough that the scale number is sharp, fully visible, and free of glare.",{class:"muted"}),reading,weightLabel);
     let photoData="",detectedWeight=null;
-    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Reading the scale photo…";detectedWeight=null;weightInput.value="";weightInput.disabled=true;try{photoData=await prepareDeliveryPhoto(file);const result=await api("/api/weights/read",{photo:photoData});detectedWeight=Number(result.measuredPounds);weightInput.value=String(detectedWeight);weightInput.disabled=false;reading.textContent=`Detected weight: ${detectedWeight.toFixed(2)} lb`;message("Compare the number below with the scale photo. Correct it if needed, then confirm.")}catch(error){photo.value="";photoData="";reading.textContent="The number was not clear enough. Retake the photo.";message(error.message,true)}});
+    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Reading the scale photo…";detectedWeight=null;weightInput.value="";weightInput.disabled=true;try{photoData=await prepareDeliveryPhoto(file);try{const result=await api("/api/weights/read",{photo:photoData});detectedWeight=Number(result.measuredPounds);weightInput.value=String(detectedWeight);reading.textContent=`Suggested reading: ${detectedWeight.toFixed(2)} lb`;message("Compare the suggested number with the scale. Type the exact scale number if it is different.")}catch{reading.textContent="Automatic reading was unclear. Type the exact number shown on the scale.";message("The photo is saved as proof. Enter the exact scale number below.")}weightInput.disabled=false;weightInput.focus()}catch(error){photo.value="";photoData="";reading.textContent="The photo could not be prepared. Retake it.";message(error.message,true)}});
     stage.append(
       node(
         "p",
@@ -911,7 +924,7 @@ async function actionWizard(o, action) {
     );
     button(stage, "Confirm this step", async () => {
       const confirmedWeight=Number(weightInput.value);
-      if(!photoData||!Number.isFinite(detectedWeight))throw Error("Take a clear scale photo and wait for the app to read it first.");
+      if(!photoData)throw Error("Take a clear scale photo first.");
       if(!Number.isFinite(confirmedWeight)||confirmedWeight<0.1||confirmedWeight>200)throw Error("Enter the exact weight shown in the scale photo.");
       body.measuredPounds = confirmedWeight;
       body.weightPhoto=photoData;
