@@ -349,9 +349,10 @@ const customerAgreement=parent=>scrollAgreement(parent,{heading:"Customer terms 
 const contractorAgreement=parent=>scrollAgreement(parent,{heading:"Washing Specialist agreement",title:"Cotton Roots & Company — Independent Washing Specialist Agreement",items:contractorTerms,extra:["I understand this is an application. I cannot accept laundry jobs until required tax, identity, and payout onboarding is complete and Management finishes the phone call and in-person shop meeting."],acceptance:"I have reviewed and agree to the complete Washing Specialist Agreement and application requirements shown above."});
 function customerRegistration(){
  reset();const c=card("👤","Create a Customer account","Complete every field and agreement. Customer accounts activate automatically after successful registration.");
- const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),referralCode=field(c,"Friend’s referral username (optional)","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
+ const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),referralName=field(c,"Who referred you? Enter their name (optional)","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
+ c.insertBefore(node("p","Management will verify the customer’s name before referral credit is awarded.",{class:"muted"}),username.previousElementSibling);
  username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 8 characters.",{class:"note"}));const accepted=customerAgreement(c);
- button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,referralCode:referralCode.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
+ button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,referralName:referralName.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
 }
 function contractorApplication(){
   reset();
@@ -1605,7 +1606,7 @@ function managementTables(data) {
     ])
       tr.append(node("td", value));
     const actions = node("td");
-    button(actions, "Edit", () => editManagedAccount(account), true);
+    button(actions, "Edit", () => editManagedAccount(account, (data.users || []).filter(person => person.role === "customer")), true);
     if (account.role === "contractor" && !account.approved)
       button(
         actions,
@@ -1623,7 +1624,7 @@ function managementTables(data) {
   wrap.append(table);
   c.append(wrap);
 }
-function editManagedAccount(account) {
+function editManagedAccount(account, customers = []) {
   main.replaceChildren();
   const c = card(
     "✎",
@@ -1644,6 +1645,31 @@ function editManagedAccount(account) {
     });
     route("management");
   });
+  if (account.role === "customer" && account.referralName) {
+    const referral = node("div", undefined, { class: "bag-card" });
+    referral.append(
+      node("h3", "Verify referral"),
+      node("p", `This customer entered: “${account.referralName}”`, { class: "note" }),
+    );
+    const choices = [["", "Choose the customer who referred them"]].concat(
+      customers
+        .filter(person => person.id !== account.id)
+        .sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username))
+        .map(person => [person.id, `${person.displayName || person.username} (${person.username})`]),
+    );
+    const referrer = select(referral, "Matching customer", choices, account.referredBy || "");
+    button(referral, "Verify and save referral", async () => {
+      if (!referrer.value) throw Error("Choose the matching customer first.");
+      await api("/api/management/accounts/" + encodeURIComponent(account.id), {
+        action: "verify_referral",
+        referrerId: referrer.value,
+      });
+      managementView = "customers";
+      await route("management");
+      message("Referral verified. Credit will be awarded after the new customer’s first paid order.");
+    });
+    c.append(referral);
+  }
   if (account.role === "contractor" && !account.approved) {
     const review = node("div", undefined, { class: "bag-card" });
     review.append(
@@ -1770,7 +1796,7 @@ function accountTable(data, role) {
     ])
       tr.append(node("td", value));
     const actions = node("td");
-    button(actions, "Account options", () => editManagedAccount(account), true);
+    button(actions, "Account options", () => editManagedAccount(account, people), true);
     if (role === "contractor" && !account.approved)
       button(actions, "Review for approval", () => reviewContractor(account));
     tr.append(actions);

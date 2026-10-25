@@ -83,6 +83,11 @@ test('customers self-register only after completing every field and agreement',a
  const duplicate=await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(registration)});assert.equal(duplicate.status,409);
  const login=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'taylor.customer',password})});assert.equal(login.status,200);const session=await login.json();assert.equal(session.user.role,'customer');assert.equal(session.user.approved,true);assert.equal(session.user.applicationStatus,'approved');assert.equal(session.user.agreementVersion,agreementVersion);assert.equal(session.user.email,'taylor@example.com');
  const cookie=login.headers.get('set-cookie').split(';')[0],me=await h.anonymous('/api/me',{headers:{cookie}});assert.equal(me.status,200);const account=await me.json();assert.equal(account.rewards.referralCode,'taylor.customer');assert.equal(account.rewards.points,0);
+ const pendingRegistration={...registration,username:'name-referral',email:'name-referral@example.com',referralCode:'',referralName:'Kaylen Polk'};
+ assert.equal((await h.anonymous('/api/customer-registrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(pendingRegistration)})).status,201);
+ const owner=await h.client('owner'),management=await owner.request('/api/management'),pending=management.data.users.find(item=>item.username==='name-referral'),referrer=management.data.users.find(item=>item.username==='customer');
+ assert.equal(pending.referralName,'Kaylen Polk');assert.equal(pending.referredBy,null);
+ const verified=await owner.request(`/api/management/accounts/${pending.id}`,{method:'POST',body:{action:'verify_referral',referrerId:referrer.id}});assert.equal(verified.status,200);assert.equal(verified.data.user.referredBy,referrer.id);
 });
 
 test('remembered sign-in uses a persistent secure session without storing a password in the browser',async t=>{
