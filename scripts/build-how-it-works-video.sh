@@ -17,28 +17,34 @@ images=(
   "$ROOT/assets/commercial/04-home.jpg"
   "$ROOT/assets/commercial/04-home.jpg"
   "$ROOT/assets/commercial/01-arrive.jpg"
+  "$ROOT/assets/commercial/04-home.jpg"
+  "$ROOT/assets/commercial/01-arrive.jpg"
 )
 headlines=(
   "1. Create your customer account"
   "2. Visit the shop with your laundry"
   "3. Check out and register your first bag"
-  "4. Book and drop off your laundry"
-  "5. A Washing Specialist accepts the job"
-  "6. Your laundry is washed and folded"
-  "7. The same bag returns to the shop"
-  "8. Get notified, review, and pay"
-  "9. Scan, collect, and enjoy"
+  "4. Choose drop-off or full service"
+  "5. Delivery goes to your saved address"
+  "6. Confirm the bag handoff"
+  "7. A Washing Specialist weighs your bag"
+  "8. Your laundry is washed and folded"
+  "9. Get notified, review, and pay"
+  "10. Earn Cotton Roots Rewards"
+  "11. Fresh laundry, your way"
 )
 subheads=(
   "Add your contact details and securely verify payment."
   "Come to 307 Locust Street during normal shop hours."
   "Get the box code, take one bag, and scan its unique QR."
-  "Place clothes inside, choose care instructions, and scan at drop-off."
-  "They scan the bag, photograph the scale, and enter the exact weight."
-  "Your items stay together and your care instructions stay with the order."
-  "A return scan confirms the work is complete and safely checked in."
-  "A text and in-app alert tell you it is ready; pay securely with Stripe."
-  "Only your paid, matching registered bag can be picked up."
+  "Bring it to the shop, or request pickup, washing, and return."
+  "Home, work, camper, or RV within the available delivery area."
+  "Every shop or delivery handoff is recorded in the app."
+  "They scan, photograph the scale, and enter the exact weight."
+  "Your items stay together and care instructions stay with the order."
+  "A text and app alert tell you it is ready; pay securely with Stripe."
+  "Earn 1 point per paid dollar, plus verified referral rewards."
+  "Clear handoffs, flexible delivery, rewards, and fresh beginnings."
 )
 
 for i in "${!images[@]}"; do
@@ -51,9 +57,9 @@ for i in "${!images[@]}"; do
     "$WORK/scene-$frame.jpg"
 done
 
-ffmpeg -loglevel error -y -framerate 1/12 -pattern_type glob -i "$WORK/scene-*.jpg" \
-  -vf "fps=30,format=yuv420p,fade=t=in:st=0:d=0.5,fade=t=out:st=107:d=1" \
-  -t 108 -c:v libx264 -crf 23 -preset medium -movflags +faststart \
+ffmpeg -loglevel error -y -framerate 1/15 -pattern_type glob -i "$WORK/scene-*.jpg" \
+  -vf "fps=30,format=yuv420p,fade=t=in:st=0:d=0.5,fade=t=out:st=164:d=1" \
+  -t 165 -c:v libx264 -crf 23 -preset medium -movflags +faststart \
   "$WORK/walkthrough-silent.mp4"
 
 ffmpeg -loglevel error -y \
