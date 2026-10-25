@@ -55,7 +55,7 @@ export async function createStripeCheckout({config,orderId,customerId,customerEm
  if(estimatedFeeCents){form.set('line_items[1][quantity]','1');form.set('line_items[1][price_data][currency]','usd');form.set('line_items[1][price_data][unit_amount]',String(estimatedFeeCents));form.set('line_items[1][price_data][tax_behavior]','exclusive');form.set('line_items[1][price_data][product_data][name]','Estimated online payment cost · TEST MODE')}
  const response=await fetchImpl(API,{method:'POST',headers:{Authorization:`Bearer ${config.secretKey}`,'Content-Type':'application/x-www-form-urlencoded','Idempotency-Key':idempotencyKey},body:form});
  let data;try{data=await response.json()}catch{throw Error('Stripe test mode returned an invalid response')}
- if(!response.ok)throw Error('Stripe could not create checkout');
+ if(!response.ok){const detail=typeof data?.error?.message==='string'?data.error.message.slice(0,240):'';throw Error(detail||'Stripe could not create checkout')}
  let checkoutUrl;try{checkoutUrl=new URL(data.url)}catch{throw Error('Stripe checkout URL missing')}
  if(checkoutUrl.protocol!=='https:'||checkoutUrl.hostname!=='checkout.stripe.com'||typeof data.id!=='string'||!data.id.startsWith(`cs_${config.mode}_`))throw Error('Unexpected Stripe checkout response');
  return {sessionId:data.id,checkoutUrl:checkoutUrl.href,orderId:trusted.orderId,amountCents:trusted.amountCents,currency:trusted.currency};

@@ -387,11 +387,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='customer')fail(403,'Customer required');
      const order=state.orders.find(order=>order.id===body.orderId&&order.customer_id===user.id);if(!order)fail(404,'Order not found');
      if(order.status!=='payment_pending'||order.payment_verified)fail(409,'Order is not awaiting payment');
-     if(order.stripe_checkout_session_id)fail(409,'A checkout is already open for this order');
      const baseAmountCents=Math.round(Number(order.total)*100);if(!Number.isSafeInteger(baseAmountCents)||baseAmountCents<=0)fail(409,'Verified order total required');
      const pricing=payment.mode==='test'?estimateStripeTestCharge(baseAmountCents,payment):{baseAmountCents,estimatedFeeCents:0,totalCents:baseAmountCents};
      const providerIdempotencyKey=hash(`stripe-${payment.mode}:${user.id}:${order.id}:${requestKey}`);
-     const checkout=await createStripeCheckout({config:payment,orderId:order.id,customerId:user.id,customerEmail:user.email||'',stripeCustomerId:user.stripe_customer_id||'',amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch});
+     let checkout;try{checkout=await createStripeCheckout({config:payment,orderId:order.id,customerId:user.id,customerEmail:user.email||'',stripeCustomerId:user.stripe_customer_id||'',amountCents:pricing.totalCents,estimatedFeeCents:pricing.estimatedFeeCents,currency:'USD',idempotencyKey:providerIdempotencyKey,fetchImpl:stripeFetch})}catch(error){console.error('Stripe order checkout failed:',String(error.message||'unknown').slice(0,240));fail(503,`Stripe could not open checkout: ${String(error.message||'please try again').slice(0,240)}`)}
      order.stripe_checkout_session_id=checkout.sessionId;order.stripe_checkout_base_cents=pricing.baseAmountCents;order.stripe_checkout_fee_cents=pricing.estimatedFeeCents;order.stripe_checkout_total_cents=pricing.totalCents;
      result={order:publicOrder(order),checkoutUrl:checkout.checkoutUrl,pricing:{currency:'USD',laundrySubtotalCents:pricing.baseAmountCents,estimatedOnlinePaymentCostCents:pricing.estimatedFeeCents,checkoutSubtotalCents:pricing.totalCents,...(payment.mode==='test'?{testTotalCents:pricing.totalCents}:{}),estimateOnly:payment.mode==='test'}};
     }else if(path==='/api/bag-box/access'){
