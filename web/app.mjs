@@ -367,9 +367,7 @@ async function render() {
       ? [
           ["home", "Home"],
           ["orders", "My laundry"],
-          ["book", "New order"],
           ["bags", "My bags"],
-          ["rewards", "Rewards"],
           ["alerts", "Alerts"],
           ["profile", "Profile"],
         ]
@@ -460,7 +458,6 @@ async function render() {
         book: book,
         bags: bags,
         alerts: actionCenter,
-        rewards: customerRewards,
         profile: profile,
         availability: availability,
         earnings: earnings,
@@ -660,7 +657,7 @@ async function orders() {
             : o.assigned_contractor_id === user.id,
         )
       : response.orders;
-  card(
+  const intro=card(
     "🧺",
     app === "customer"
       ? "Your laundry, step by step"
@@ -671,6 +668,7 @@ async function orders() {
       ? "Updates are shared securely with the shop. Payment and pickup are separate steps."
       : "Accept only when you can meet the displayed deadline. Scan the bag and shop station at each required visit.",
   );
+  if(app==="customer")button(intro,"Create a new laundry order",()=>route("book"));
   if(app==="contractor"&&page!=="offers")contractorReminders(orders);
   const filterBox = node("div", undefined, { class: "filter" });
   main.append(filterBox);
@@ -1105,6 +1103,7 @@ async function profile() {
   else button(c,"Verify my information",async()=>{const result=await api("/api/profile",{action:"verify"});user=result.user;await route("profile");message("Your information is verified.")});
   button(c,"Edit information",showEditor,true);
   c.append(node("p","Payment cards are handled securely by Stripe and are never displayed or stored in this profile.",{class:"muted"}));
+  if(user.role==="customer")await customerRewards();
 }
 async function bags() {
   const { bags = [] } = await api("/api/bags");
