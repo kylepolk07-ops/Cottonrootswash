@@ -62,6 +62,15 @@ export async function createStripeCheckout({config,orderId,customerId,customerEm
 }
 export const createStripeTestCheckout=createStripeCheckout;
 
+export async function createStripePaymentSetup({config,customerId,customerEmail='',stripeCustomerId='',idempotencyKey,fetchImpl=fetch}){
+ if(config?.provider!=='stripe'||!['test','live'].includes(config.mode)||!new RegExp(`^(?:sk|rk)_${config.mode}_\\S{8,}$`).test(config.secretKey))throw Error('Stripe configuration required');
+ if(typeof customerId!=='string'||!customerId||typeof idempotencyKey!=='string'||idempotencyKey.length<8)throw Error('Customer and idempotency key required');
+ const form=new URLSearchParams({mode:'setup',success_url:`${config.origin}/customer?payment_setup=success`,cancel_url:`${config.origin}/customer?payment_setup=cancel`,client_reference_id:customerId,'metadata[purpose]':'customer_payment_setup','metadata[customer_id]':customerId,'payment_method_types[0]':'card'});
+ if(stripeCustomerId){if(!/^cus_[A-Za-z0-9]{8,}$/.test(stripeCustomerId))throw Error('Valid Stripe customer required');form.set('customer',stripeCustomerId)}else if(customerEmail){if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail))throw Error('Valid customer email required');form.set('customer_email',customerEmail)}
+ const response=await fetchImpl(API,{method:'POST',headers:{Authorization:`Bearer ${config.secretKey}`,'Content-Type':'application/x-www-form-urlencoded','Idempotency-Key':idempotencyKey},body:form});let data;try{data=await response.json()}catch{throw Error('Stripe returned an invalid response')}
+ if(!response.ok)throw Error('Stripe could not start secure payment setup');let url;try{url=new URL(data.url)}catch{throw Error('Stripe setup URL missing')};if(url.protocol!=='https:'||url.hostname!=='checkout.stripe.com'||typeof data.id!=='string'||!data.id.startsWith(`cs_${config.mode}_`))throw Error('Unexpected Stripe setup response');return {sessionId:data.id,checkoutUrl:url.href};
+}
+
 export function reconcileStripeCheckout(event,{orderId,customerId,amountCents,currency='USD',checkoutSessionId=null,processedEventIds=new Set(),mode='test',stripeCustomerId=''}={}){
  const trusted=trustedCheckout({orderId,customerId,amountCents,currency});
  if(!(processedEventIds instanceof Set))throw Error('Processed event set required');

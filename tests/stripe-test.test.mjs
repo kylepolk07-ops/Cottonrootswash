@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {stripeConfig,stripeTestConfig,estimateStripeTestCharge,verifyStripeSignature,createStripeCheckout,createStripeTestCheckout,reconcileStripeCheckout} from '../server/stripe-test.mjs';
+import {stripeConfig,stripeTestConfig,estimateStripeTestCharge,verifyStripeSignature,createStripeCheckout,createStripePaymentSetup,createStripeTestCheckout,reconcileStripeCheckout} from '../server/stripe-test.mjs';
 
 const origin='https://cotton-test.example',secretKey='sk_test_1234567890abcdef',webhookSecret='whsec_1234567890abcdef';
 const config={provider:'stripe',mode:'test',origin,secretKey,webhookSecret,feeBps:290,feeFixedCents:30,connect:false};
@@ -58,6 +58,12 @@ test('hosted Stripe test checkout sends trusted amount and accepts only Stripe t
  assert.equal(form.get('automatic_tax[enabled]'),'true');assert.equal(form.get('billing_address_collection'),'required');assert.equal(form.get('line_items[0][price_data][tax_behavior]'),'exclusive');
  assert.equal(form.get('customer_creation'),'always');
  await assert.rejects(()=>createStripeTestCheckout({config,orderId:'order-1',customerId:'customer',amountCents:3125,idempotencyKey:'checkout-order-1',fetchImpl:async()=>({ok:true,json:async()=>({id:'cs_live_bad',url:'https://attacker.example'})})}));
+});
+
+test('customer payment setup uses Stripe-hosted setup mode before ordering',async()=>{
+ let request;const fetchImpl=async(url,options)=>{request={url,options};return {ok:true,json:async()=>({id:'cs_test_setup123',url:'https://checkout.stripe.com/c/setup/cs_test_setup123'})}};
+ const result=await createStripePaymentSetup({config,customerId:'customer',customerEmail:'customer@example.com',idempotencyKey:'payment-profile-customer',fetchImpl});assert.equal(result.sessionId,'cs_test_setup123');
+ const form=new URLSearchParams(request.options.body);assert.equal(form.get('mode'),'setup');assert.equal(form.get('metadata[purpose]'),'customer_payment_setup');assert.equal(form.get('metadata[customer_id]'),'customer');assert.equal(form.get('payment_method_types[0]'),'card');assert.equal(form.get('customer_email'),'customer@example.com');assert.equal(form.has('line_items[0][quantity]'),false);
 });
 
 test('Stripe reconciliation rejects mismatched, unpaid, live-like and duplicate checkout events',()=>{

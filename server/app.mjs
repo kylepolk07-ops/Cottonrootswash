@@ -12,7 +12,7 @@ import {createPrivateAccess} from './private-access.mjs';
 import {transition,ACTION} from '../shared/workflow.mjs';
 import {invoiceTotal,deliveryFee,contractorPayBreakdown} from '../shared/rules.mjs';
 import {deadlineAlert} from '../shared/management.mjs';
-import {verifyStripeSignature,createStripeCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
+import {verifyStripeSignature,createStripeCheckout,createStripePaymentSetup,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
 import {createWorker,OEM,PSM} from 'tesseract.js';
@@ -75,7 +75,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  if(!row && fixtures){
   const accounts=['customer','customer2','contractor','contractor2','owner'].map(role=>{
    const password=fixturePasswords[role]||token().slice(0,24),salt=token();const id=role;
-   state.users.push({id,username:role,role:role.replace(/2$/,''),salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:role.startsWith('contractor'),days:[],preference:'both',agreement_version:role==='owner'?null:AGREEMENT_VERSION,agreement_accepted_at:role==='owner'?null:new Date().toISOString()});
+   state.users.push({id,username:role,role:role.replace(/2$/,''),salt,passwordHash:scryptSync(password,salt,64).toString('hex'),approved:role.startsWith('contractor'),payment_method_ready:role.startsWith('customer'),days:[],preference:'both',agreement_version:role==='owner'?null:AGREEMENT_VERSION,agreement_accepted_at:role==='owner'?null:new Date().toISOString()});
    return {id,username:role,role:role.replace(/2$/,''),password};
   });
   const bagToken=token();state.bags.push({id:'bag-001',token:bagToken,customer_id:null});
@@ -100,7 +100,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
  const proofDir=resolve(dataDir,'delivery-proofs');mkdirSync(proofDir,{recursive:true,mode:0o700});
  const rewardsFor=u=>{if(u.role!=='customer')return null;const paid=state.orders.filter(order=>order.customer_id===u.id&&order.payment_verified),purchasePoints=paid.reduce((sum,order)=>sum+Math.floor(Number(order.payment_total_cents||Math.round(Number(order.total||0)*100))/100),0),qualified=u.referred_by&&paid.length?50:0,referralPoints=state.users.filter(other=>other.role==='customer'&&other.referred_by===u.id&&state.orders.some(order=>order.customer_id===other.id&&order.payment_verified)).length*50,points=purchasePoints+qualified+referralPoints;return {points,purchasePoints,referralPoints:qualified+referralPoints,creditDollars:Math.floor(points/100)*5,referralCode:u.username,program:'1 point per paid dollar. After a referred customer’s first paid order, both customers receive 50 points. Every 100 points earns a $5 credit.'}};
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',smsConsent:u.sms_consent===true,smsConsentAt:u.sms_consent_at||null,profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null,payoutOnboardingComplete:u.payout_onboarding_complete===true});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',smsConsent:u.sms_consent===true,smsConsentAt:u.sms_consent_at||null,profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null,payoutOnboardingComplete:u.payout_onboarding_complete===true,paymentMethodReady:u.payment_method_ready===true,notificationAcks:u.notification_acks||[]});
  const staff=u=>['owner','staff'].includes(u.role);
  const payoutState=o=>{if(o.contractor_payout_status==='paid')return {status:'paid',eligibleAt:o.contractor_paid_at||null};if(!o.payment_verified||!o.paid_at)return {status:'waiting_for_customer_payment',eligibleAt:null};const eligibleAt=new Date(Date.parse(o.paid_at)+24*3600000).toISOString();return {status:Date.now()>=Date.parse(eligibleAt)?'ready':'clearing',eligibleAt}};
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
@@ -145,6 +145,9 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(!verifyStripeSignature({rawBody,signatureHeader,webhookSecret:payment.webhookSecret}))fail(400,'Invalid webhook');
      let event;try{event=JSON.parse(rawBody.toString())}catch{fail(400,'Invalid webhook')}
      if(state.paymentEvents.includes(event.id))return send(200,{received:true,duplicate:true});
+     const session=event.data?.object;if(event.type==='checkout.session.completed'&&session?.metadata?.purpose==='customer_payment_setup'){
+      const customer=state.users.find(account=>account.id===session.metadata.customer_id&&account.role==='customer');if(!customer||session.object!=='checkout.session'||session.mode!=='setup'||session.status!=='complete'||session.client_reference_id!==customer.id||typeof session.id!=='string'||!session.id.startsWith(`cs_${payment.mode}_`)||typeof session.customer!=='string'||!/^cus_[A-Za-z0-9]{8,}$/.test(session.customer)||typeof session.setup_intent!=='string'||!session.setup_intent.startsWith('seti_'))fail(409,'Stripe setup does not match customer');customer.stripe_customer_id=session.customer;customer.payment_method_ready=true;customer.payment_method_verified_at=new Date().toISOString();state.paymentEvents.push(event.id);state.audit.push({id:token().slice(0,24),actor:'stripe-webhook',at:new Date().toISOString(),path:remotePath,action:'customer_payment_method_verified',request_id:event.id});save();return send(200,{received:true});
+     }
      const orderId=event.data?.object?.client_reference_id,index=state.orders.findIndex(order=>order.id===orderId),order=state.orders[index];
      if(!order||!order.stripe_checkout_session_id||!Number.isSafeInteger(order.stripe_checkout_total_cents))fail(409,'Unknown checkout');
      const before=JSON.stringify(state);
@@ -375,6 +378,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      if(user.role!=='contractor')fail(403,'Washing Specialist required');if(!payment?.connect)fail(503,'Stripe payout onboarding is not enabled');if(!user.displayName||!user.email)fail(400,'Save your name and email before payout setup');
      if(!user.stripe_connected_account_id)user.stripe_connected_account_id=await createConnectedAccount({config:payment,user,idempotencyKey:hash(`connect:${user.id}`),fetchImpl:stripeFetch});
      const onboardingUrl=await createConnectOnboardingLink({config:payment,accountId:user.stripe_connected_account_id,fetchImpl:stripeFetch});result={onboardingUrl};
+    }else if(path==='/api/payment-profile/setup'){
+     if(payment?.provider!=='stripe'||user.role!=='customer')fail(403,'Customer payment setup unavailable');const setup=await createStripePaymentSetup({config:payment,customerId:user.id,customerEmail:user.email||'',stripeCustomerId:user.stripe_customer_id||'',idempotencyKey:hash(`payment-profile:${user.id}:${requestKey}`),fetchImpl:stripeFetch});result={setupUrl:setup.checkoutUrl};
+    }else if(path==='/api/notifications/ack'){
+     const id=typeof body.id==='string'?body.id.slice(0,160):'';if(!id)fail(400,'Notification required');user.notification_acks??=[];if(!user.notification_acks.includes(id))user.notification_acks.push(id);user.notification_acks=user.notification_acks.slice(-200);result={acknowledged:true,id};
     }else if(path==='/api/payments/checkout'){
      if(payment?.provider!=='stripe')fail(503,'Payments are not configured');
      if(user.role!=='customer')fail(403,'Customer required');
@@ -431,6 +438,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      }
     }else if(path==='/api/orders'){
      if(user.role!=='customer')fail(403,'Customer required');
+     if(payment?.provider==='stripe'&&!user.payment_method_ready)fail(403,'Set up and verify your payment method before placing an order');
      if(!['dropoff','full_service'].includes(body.service)||!['standard','own','contact'].includes(body.detergent))fail(400,'Invalid booking');
      const bag=state.bags.find(b=>b.customer_id===user.id&&b.status!=='retired');if(!bag)fail(409,'Claim an active bag first');
      if(state.orders.some(o=>o.bag_id===bag.id&&!['picked_up','cancelled'].includes(o.status)))fail(409,'Bag already has an active order');
@@ -485,6 +493,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      else fail(400,'Unsupported bag action');
     }else if(path==='/api/management/approve'){
      if(user.role!=='owner')fail(403,'Owner access required');const applicant=state.users.find(u=>u.id===body.userId&&u.role==='contractor');if(!applicant)fail(404,'Contractor not found');
+     if(payment?.provider==='stripe'&&(!payment.connect||!applicant.payout_onboarding_complete))fail(409,'Tax, identity, and bank payout setup must be verified before approval');
      if(body.phoneConfirmed!==true||body.inPersonConfirmed!==true)fail(400,'Confirm the phone conversation and in-person shop meeting first');
      const approvedAt=new Date().toISOString();applicant.approved=true;applicant.application_status='approved';applicant.phone_screen_confirmed_at=approvedAt;applicant.shop_meeting_confirmed_at=approvedAt;applicant.approved_at=approvedAt;applicant.approved_by=user.id;result={user:publicUser(applicant)};
     }else if(path==='/api/management/pricing'){

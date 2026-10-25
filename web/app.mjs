@@ -375,6 +375,7 @@ async function render() {
         ]
       : [
           ["home", "Today"],
+          ["alerts", "Alerts"],
           ["availability", "Availability"],
           ["offers", "Offers"],
           ["orders", "My jobs"],
@@ -458,7 +459,7 @@ async function render() {
         orders: orders,
         book: book,
         bags: bags,
-        alerts: customerAlerts,
+        alerts: actionCenter,
         rewards: customerRewards,
         profile: profile,
         availability: availability,
@@ -472,11 +473,12 @@ async function render() {
 }
 async function pendingContractor(){
   reset();nav.hidden=true;document.querySelector("footer").hidden=true;
-  const onboarding=await api("/api/contractor-onboarding"),needsPayout=onboarding.enabled&&!onboarding.status.complete;
+  const onboarding=await api("/api/contractor-onboarding"),needsPayout=!onboarding.status.complete;
+  const alert=card("🔔","Required before you can work",needsPayout?"Complete your W-9, identity verification, and bank payout connection. Management cannot approve the application until Stripe verifies these items.":"Your secure documents are complete. Management must finish the phone call and in-person meeting before approving your application.");
   const c=card(needsPayout?"💳":"⏳",needsPayout?"Complete your payout setup":"Application pending",needsPayout?"Stripe securely collects your tax information, verifies your identity, and connects your bank account. Cotton Roots does not receive your Social Security number, ID image, or bank account number.":"Your login works. Management must speak with you by phone and meet you at the shop before you can view or accept laundry jobs.");
   const name=field(c,"Full name","text",user.displayName||""),phone=field(c,"Phone number","tel",user.phone||""),email=field(c,"Email","email",user.email||"");
   button(c,"Save contact information",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value});user=result.user;message("Contact information saved.")},true);
-  if(needsPayout){const steps=node("div",undefined,{class:"bag-card"});steps.append(node("strong","Required before accepting jobs"),node("p","• W-9 tax information\n• Government ID verification\n• Bank account for payouts",{class:"muted"}));c.append(steps);button(c,onboarding.status.started?"Continue secure Stripe setup":"Start secure Stripe setup",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)});button(c,"I finished Stripe setup — refresh status",async()=>{await route("home")},true)}
+  if(needsPayout){const steps=node("div",undefined,{class:"bag-card"});steps.append(node("strong","Required before approval"),node("p","1. W-9 tax information\n2. Government ID verification\n3. Bank account for secure payouts",{class:"muted"}));c.append(steps);if(onboarding.enabled){button(c,onboarding.status.started?"Continue secure Stripe setup":"Start secure Stripe setup",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)});button(c,"I finished Stripe setup — refresh status",async()=>{await route("home")},true)}else c.append(node("p","Secure document setup is being activated by Management. You will see the setup button here as soon as it is available.",{class:"confirm-warning"}))}
   if(!user.approved)c.append(node("p","Management must also complete your phone call and in-person shop meeting before work access is approved.",{class:"note"}));
 }
 function agreement() {
@@ -583,9 +585,23 @@ async function customerAlerts(){
  const c=card("🔔","Notifications","Status changes appear here whenever you open or refresh the app.");
  button(c,"Refresh notifications",()=>route("alerts"),true);
  if(!events.length)c.append(node("p","No laundry notifications yet.",{class:"muted"}));
- for(const event of events){const item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));c.append(item)}
+ for(const event of events){const id=`customer:${event.order.id}:${event.title}:${event.at}`,seen=user.notificationAcks?.includes(id),item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));if(seen)item.append(node("span","Acknowledged",{class:"pill"}));else button(item,"I acknowledge this update",async()=>{await api("/api/notifications/ack",{id});const me=await api("/api/me");user=me.user;await route("alerts");message("Update acknowledged.")},true);c.append(item)}
  const push=card("📲","Phone alerts","This installable web app can support phone push notifications without an App Store app. Background push setup and customer permission will be added with the notification service; for now, alerts update inside Cotton Roots when it opens.");
  push.append(node("p","Text messages can remain the backup notification method after registration is approved.",{class:"note"}));
+}
+async function actionCenter(){
+ if(user.role==="customer"){
+  const me=await api("/api/me");user=me.user;
+  if(!user.paymentMethodReady){const required=card("🔔","Action required: verify payment","A valid payment method must be securely verified before you can place a laundry order.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});}
+  return customerAlerts();
+ }
+ const [{orders=[]},onboarding]=await Promise.all([api("/api/orders"),api("/api/contractor-onboarding")]);
+ const c=card("🔔","Action Center","Required items and laundry deadlines appear here. Open each item and acknowledge that you have seen it.");
+ if(onboarding.enabled&&!onboarding.status.complete){const item=node("div",undefined,{class:"notification-item"});item.append(node("strong","Required: tax, identity, and payout setup"),node("p","Complete your W-9, government identity check, and bank connection. You cannot be approved or accept work until Stripe verifies everything."));c.append(item);button(item,onboarding.status.started?"Continue secure setup":"Start secure setup",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)})}
+ const active=orders.filter(order=>order.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(order.status));
+ for(const order of active){const id=`job:${order.id}:${order.status}:${order.due_at||''}`,seen=user.notificationAcks?.includes(id),item=node("div",undefined,{class:"notification-item"});item.append(node("strong",order.deadline_alert?.state==="overdue"?"Laundry is overdue":"Laundry job needs attention"),node("p",`Bag ${order.bag_id||"pending"} · ${statusLabels[order.status]||order.status}${order.due_at?` · due ${new Date(order.due_at).toLocaleString()}`:""}`));if(seen)item.append(node("span","Acknowledged",{class:"pill"}));else button(item,"I acknowledge this update",async()=>{await api("/api/notifications/ack",{id});const me=await api("/api/me");user=me.user;await route("alerts");message("Update acknowledged.")},true);c.append(item)}
+ if(!active.length&&(!onboarding.enabled||onboarding.status.complete))c.append(node("p","You have no required actions right now.",{class:"muted"}));
+ button(c,"Refresh Action Center",()=>route("alerts"),true);
 }
 async function customerRewards(){
  const me=await api("/api/me");rewardsPreview=me.rewards;
@@ -989,6 +1005,7 @@ async function prepareDeliveryPhoto(file){
   return canvas.toDataURL("image/jpeg",.72);
 }
 async function book() {
+  if(!user.paymentMethodReady){const required=card("🔔","Verify payment before ordering","Cotton Roots requires a verified payment method before a new laundry order can be placed.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});button(required,"Go to Action Center",()=>route("alerts"),true);return}
   const prices=pricingPreview||{dropoff:2.5,full_service:3,rushPerLb:1};
   const c = card(
     "🧺",
@@ -1618,13 +1635,17 @@ function editManagedAccount(account) {
       node("h3", "Washing Specialist approval"),
       node(
         "p",
-        "Approve only after you have spoken with this Washing Specialist and met them at the shop.",
+        account.payoutOnboardingComplete
+          ? "Stripe tax, identity, and bank setup is verified. Complete the phone and in-person review."
+          : "Stripe tax, identity, and bank setup is not complete. Approval is blocked until it is verified.",
         { class: "muted" },
       ),
     );
     const phoneConfirmed = check(review, "I spoke with this Washing Specialist by phone."),
       inPersonConfirmed = check(review, "I met this Washing Specialist in person at the shop.");
     button(review, "Approve Washing Specialist", async () => {
+      if (!account.payoutOnboardingComplete)
+        throw Error("Stripe must verify tax, identity, and bank setup before approval.");
       if (!phoneConfirmed.checked || !inPersonConfirmed.checked)
         throw Error("Complete both Washing Specialist review steps first.");
       await api("/api/management/approve", {
@@ -1749,9 +1770,9 @@ function reviewContractor(account) {
   const c=card("🧺","Washing Specialist approval","Review the information they entered. You do not need to edit it before deciding.");
   const details=node("dl");
   for(const [label,value] of [["Name",account.displayName||"Not provided"],["Phone",account.phone||"Not provided"],["Email",account.email||"Not provided"],["Username",account.username]])details.append(node("dt",label),node("dd",value));
-  c.append(details,node("p","Approve only after speaking with this Washing Specialist by phone and meeting them in person at the shop.",{class:"note"}));
+  c.append(details,node("p",account.payoutOnboardingComplete?"Stripe tax, identity, and bank setup: VERIFIED":"Stripe tax, identity, and bank setup: NOT COMPLETE — approval is blocked",{class:account.payoutOnboardingComplete?"note":"confirm-warning"}),node("p","Approve only after Stripe verification, speaking with this Washing Specialist by phone, and meeting them in person at the shop.",{class:"note"}));
   const phoneConfirmed=check(c,"I spoke with this Washing Specialist by phone."),inPersonConfirmed=check(c,"I met this Washing Specialist in person at the shop.");
-  button(c,"Approve Washing Specialist",async()=>{if(!phoneConfirmed.checked||!inPersonConfirmed.checked)throw Error("Complete both Washing Specialist review steps first.");await api("/api/management/approve",{userId:account.id,phoneConfirmed:true,inPersonConfirmed:true});managementView="contractors";await route("management");message("Washing Specialist approved.");});
+  button(c,"Approve Washing Specialist",async()=>{if(!account.payoutOnboardingComplete)throw Error("Stripe must verify tax, identity, and bank setup before approval.");if(!phoneConfirmed.checked||!inPersonConfirmed.checked)throw Error("Complete both Washing Specialist review steps first.");await api("/api/management/approve",{userId:account.id,phoneConfirmed:true,inPersonConfirmed:true});managementView="contractors";await route("management");message("Washing Specialist approved.");});
   button(c,"Not yet — go back",()=>{managementView="contractors";route("management")},true);
 }
 function bagInventory(data) {
