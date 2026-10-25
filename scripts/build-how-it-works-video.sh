@@ -54,7 +54,15 @@ done
 ffmpeg -loglevel error -y -framerate 1/12 -pattern_type glob -i "$WORK/scene-*.jpg" \
   -vf "fps=30,format=yuv420p,fade=t=in:st=0:d=0.5,fade=t=out:st=107:d=1" \
   -t 108 -c:v libx264 -crf 23 -preset medium -movflags +faststart \
+  "$WORK/walkthrough-silent.mp4"
+
+ffmpeg -loglevel error -y \
+  -i "$WORK/walkthrough-silent.mp4" \
+  -i "$ROOT/assets/commercial/how-it-works-narration.m4a" \
+  -filter_complex '[0:v]tpad=stop_mode=clone:stop_duration=8[v]' \
+  -map '[v]' -map 1:a:0 -c:v libx264 -crf 23 -preset medium \
+  -c:a aac -b:a 112k -shortest -movflags +faststart \
   "$ROOT/web/how-cotton-roots-works.mp4"
 
 convert "$WORK/scene-00.jpg" -quality 88 "$ROOT/web/how-cotton-roots-works-poster.jpg"
-echo "Built complete 108-second customer walkthrough"
+echo "Built complete customer walkthrough with embedded narration"
