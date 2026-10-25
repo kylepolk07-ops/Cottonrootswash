@@ -33,6 +33,7 @@ const contractorTerms=[
  ["independent_business","I choose my availability and jobs and am responsible for my independent-business taxes, expenses, methods, and optional transportation commitments."],
  ["custody_care","I will inspect, document, keep separate, and carefully handle every accepted bag and stop for Management review when damage, valuables, unsafe items, or unclear care instructions are found."],
  ["deadline_scans","I will follow every bag scan, custody, deadline, photo, and return step and report any delay or problem promptly."],
+ ["smartphone_required","I have a smartphone with a working camera, internet access, and a supported web browser, and I will use it for required bag scans, scale photos, custody confirmations, and job updates."],
  ["legal_draft","I understand these are launch-draft terms pending attorney review and agree to the current terms shown with my application."],
 ];
 window.addEventListener("pagehide", () => stopCamera?.());
@@ -339,7 +340,7 @@ function contractorApplication(){
   const c=card("🧺","Apply to be a washing specialist","Create your own login. Management will call you and meet you at the shop before approving work access.");
   const name=field(c,"Full name","text"),phone=field(c,"Phone number","tel"),email=field(c,"Email","email"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
   username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";
-  c.append(node("p","Password must be at least 8 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
+  c.append(node("p","A smartphone with a working camera and internet access is required for every Washing Specialist. You will use it to scan bags, photograph scale readings, and complete job steps.",{class:"note"}),node("p","Password must be at least 8 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
   const accepted=contractorAgreement(c);
   button(c,"Submit Washing Specialist application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Washing Specialist Agreement before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:contractorTerms.map(([id])=>id)});login();message("Application submitted. Sign in to complete payout setup and follow your approval status.")});
   button(c,"Back to sign in",login,true);
@@ -875,27 +876,24 @@ async function actionWizard(o, action) {
     stage.append(
       node(
         "p",
-        "Slide to the scale reading or enter it below. No weight photo is needed.",
+        "Place the full laundry bag on the scale, then take one clear photo showing the bag and the complete scale reading. The app will read the weight for you.",
         { class: "note" },
       ),
     );
-    const pounds = field(stage, "Measured pounds", "number");
-    pounds.min = "0.1";
-    pounds.max = "200";
-    pounds.step = "0.1";
-    weightControl(stage, pounds);
+    const photoLabel=node("label","Take scale photo"),photo=node("input",undefined,{type:"file",accept:"image/*",capture:"environment"}),reading=node("p","No photo taken yet.",{class:"weight-output",role:"status"});photoLabel.append(photo);stage.append(photoLabel,node("p","Move close enough that the scale number is sharp, fully visible, and free of glare.",{class:"muted"}),reading);
+    let photoData="",detectedWeight=null;
+    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Reading the scale photo…";detectedWeight=null;try{photoData=await prepareDeliveryPhoto(file);const result=await api("/api/weights/read",{photo:photoData});detectedWeight=Number(result.measuredPounds);reading.textContent=`Detected weight: ${detectedWeight.toFixed(1)} lb`;message("Check that the detected number matches the scale photo, then confirm.")}catch(error){photo.value="";photoData="";reading.textContent="The number was not clear enough. Retake the photo.";message(error.message,true)}});
     stage.append(
       node(
         "p",
-        "The server confirms the weight and rounds upward to the next half-pound.",
+        "Check the detected number before confirming. Billing rounds it upward to the next half-pound.",
         { class: "muted" },
       ),
     );
     button(stage, "Confirm this step", async () => {
-      const n = Number(pounds.value);
-      if (!Number.isFinite(n) || n <= 0 || n > 200)
-        throw Error("Enter a measured weight between 0.1 and 200 lb.");
-      body.measuredPounds = n;
+      if(!photoData||!Number.isFinite(detectedWeight))throw Error("Take a clear scale photo and wait for the app to read it first.");
+      body.measuredPounds = detectedWeight;
+      body.weightPhoto=photoData;
       await submit();
     });
     button(stage, "Back: scan bag again", bag, true);
@@ -986,7 +984,7 @@ async function actionWizard(o, action) {
   button(c, "Back to laundry", () => route("orders"), true);
 }
 async function prepareDeliveryPhoto(file){
-  if(!["image/jpeg","image/png"].includes(file.type)||file.size>12000000)throw Error("Choose a JPEG or PNG photo smaller than 12 MB.");
+  if(!file.type.startsWith("image/")||file.size>12000000)throw Error("Choose a photo smaller than 12 MB.");
   const image=await createImageBitmap(file),scale=Math.min(1,1280/Math.max(image.width,image.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext("2d").drawImage(image,0,0,canvas.width,canvas.height);image.close();
   return canvas.toDataURL("image/jpeg",.72);
 }
@@ -1470,6 +1468,7 @@ function managementOrderDetail(data,order){
   const customer=(data.users||[]).find(person=>person.id===order.customer_id),contractor=(data.users||[]).find(person=>person.id===order.assigned_contractor_id),c=card("📦",`Order ${order.id}`,statusLabels[order.status]||order.status);
   button(c,"← All orders",()=>{managementOrderId=null;route("management")},true);summary(c,order);timeline(c,order);
   const details=node("dl");for(const [label,value] of [["Customer",customer?.displayName||customer?.username||"Unknown"],["Washing Specialist",contractor?.displayName||contractor?.username||"Not assigned"],["Created",new Date(order.created_at).toLocaleString()],["Service",order.service==="full_service"?"Pickup & return":"Drop off"],["Address",order.pickup_address||"Shop drop-off"],["Delivery note",order.delivery_instructions||"—"],["Round-trip miles",order.service==="full_service"?Number(order.delivery_miles||0).toFixed(1):"—"],["Bag",order.bag_id||"Not assigned"]])details.append(node("dt",label),node("dd",value));c.append(details);
+  if(order.weight_photo_at){const proof=node("a","View scale photo",{href:`/api/orders/${encodeURIComponent(order.id)}/weight-proof`,target:"_blank",rel:"noopener",class:"role-continue"});c.append(node("p",`Recorded weight: ${Number(order.measured_pounds||order.billed_pounds).toFixed(1)} lb · photo taken ${new Date(order.weight_photo_at).toLocaleString()}`,{class:"note"}),proof)}
   if(order.status==="paid_hold")button(c,"Move paid bag to pickup area",()=>actionWizard(order,"staff_release"));
 }
 function alertText(alert){

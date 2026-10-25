@@ -8,9 +8,10 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createApp} from '../server/app.mjs';
 
-const agreementVersion='launch-draft-2026-10-23-v2';
+const agreementVersion='launch-draft-2026-10-25-v3';
 const customerConditions=['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'];
-const contractorConditions=['platform_role','independent_business','custody_care','deadline_scans','legal_draft'];
+const contractorConditions=['platform_role','independent_business','custody_care','deadline_scans','smartphone_required','legal_draft'];
+const weightPhoto=`data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff,0xd8]),Buffer.alloc(1200)]).toString('base64')}`;
 
 async function harness(t) {
  const dataDir=await mkdtemp(join(tmpdir(),'cotton-api-'));
@@ -184,7 +185,7 @@ test('pickup and return orders protect addresses and include distance pricing',a
  assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
  assert.equal((await action(contractor,offer.id,'accept_job',{deadlineAcknowledged:true})).status,200);
  offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===offer.id);assert.equal(offer.pickup_address,'100 Test Street, Sweetwater, TX');
- assert.equal((await action(contractor,offer.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1})).status,200);
+ assert.equal((await action(contractor,offer.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto})).status,200);
  assert.equal((await action(contractor,offer.id,'wall_checkout',{stationToken:h.fixtures.stationToken})).status,409,'delivery pickup requires the bag, not the shop station');
  const picked=await action(contractor,offer.id,'wall_checkout',{bagToken:h.fixtures.bagToken});assert.equal(picked.status,200);assert.equal(picked.data.order.total,28.5);
  assert.equal((await action(contractor,offer.id,'wash_complete')).status,200);
@@ -238,10 +239,10 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  const assigned=accepts[0].status===200?k:k2,unassigned=assigned===k?k2:k;
  assert.ok(!(await unassigned.request('/api/orders')).data.orders.some(order=>order.id===o.id));
  const assignedOrder=(await assigned.request('/api/orders')).data.orders.find(order=>order.id===o.id);assert.ok(assignedOrder.customer_name,'Assigned contractor needs the customer name for physical bag verification');assert.equal(assignedOrder.customer_id,undefined,'Internal customer ID stays private');assert.equal(assignedOrder.laundry_notes,'Cold water. Keep the blue school shirt separate.');
- denied(await action(unassigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1}));
+ denied(await action(unassigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto}));
  denied(await action(assigned,o.id,'wall_checkout',scan));
- denied(await action(assigned,o.id,'record_weight',{bagToken:'wrong',measuredPounds:8.1}));
- const weighed=await action(assigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1});assert.equal(weighed.status,200,JSON.stringify(weighed.data));assert.equal(weighed.data.order.billed_pounds,8.5);
+ denied(await action(assigned,o.id,'record_weight',{bagToken:'wrong',measuredPounds:8.1,weightPhoto}));
+ const weighed=await action(assigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto});assert.equal(weighed.status,200,JSON.stringify(weighed.data));assert.equal(weighed.data.order.billed_pounds,8.5);
  assert.equal((await action(assigned,o.id,'wall_checkout',scan)).status,200);
  denied(await action(assigned,o.id,'wall_checkin',scan));
  assert.equal((await action(assigned,o.id,'wash_complete')).status,200);

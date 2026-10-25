@@ -15,16 +15,20 @@ import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeCheckout,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
+import {createWorker,OEM,PSM} from 'tesseract.js';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const sixDigitCode=()=>String(randomInt(0,1000000)).padStart(6,'0');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-const AGREEMENT_VERSION='launch-draft-2026-10-23-v2';
+const AGREEMENT_VERSION='launch-draft-2026-10-25-v3';
 const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1});
-const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'],contractor:['platform_role','independent_business','custody_care','deadline_scans','legal_draft']};
+const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'],contractor:['platform_role','independent_business','custody_care','deadline_scans','smartphone_required','legal_draft']};
 const SHOP_COORDINATES={latitude:32.47095,longitude:-100.40594};
 const milesBetween=(a,b)=>{const radians=value=>value*Math.PI/180,dLat=radians(b.latitude-a.latitude),dLon=radians(b.longitude-a.longitude),lat1=radians(a.latitude),lat2=radians(b.latitude),h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))};
+let weightReaderPromise;
+const weightReader=()=>weightReaderPromise??=createWorker('eng',OEM.LSTM_ONLY,{langPath:resolve(root,'node_modules/@tesseract.js-data/eng/4.0.0'),gzip:true,cacheMethod:'none'}).then(async worker=>{await worker.setParameters({tessedit_char_whitelist:'0123456789.',tessedit_pageseg_mode:PSM.SPARSE_TEXT});return worker});
+const photoPayload=(value,label)=>{const match=typeof value==='string'&&value.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/);if(!match)fail(400,`Take a clear photo of the ${label}`);const bytes=Buffer.from(match[2],'base64');if(bytes.length<1000||bytes.length>500000)fail(400,`${label} photo must be between 1 KB and 500 KB`);if(match[1]==='image/jpeg'&&!(bytes[0]===0xff&&bytes[1]===0xd8)||match[1]==='image/png'&&!(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47))fail(400,`Invalid ${label} photo`);return {bytes,type:match[1]}};
 async function estimateDeliveryMiles(address){
  const signal=AbortSignal.timeout(8000),query=new URLSearchParams({address,benchmark:'Public_AR_Current',format:'json'});
  const response=await fetch(`https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?${query}`,{headers:{Accept:'application/json'},signal});
@@ -100,7 +104,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const staff=u=>['owner','staff'].includes(u.role);
  const payoutState=o=>{if(o.contractor_payout_status==='paid')return {status:'paid',eligibleAt:o.contractor_paid_at||null};if(!o.payment_verified||!o.paid_at)return {status:'waiting_for_customer_payment',eligibleAt:null};const eligibleAt=new Date(Date.parse(o.paid_at)+24*3600000).toISOString();return {status:Date.now()>=Date.parse(eligibleAt)?'ready':'clearing',eligibleAt}};
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
- const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,contractor_pay_adjustments,...safe}=o;return safe};
+ const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,weight_proof_file,contractor_pay_adjustments,...safe}=o;return safe};
  const smsCopy=(order,event)=>({picked_up:`Cotton Roots: Your bag ${order.bag_id} was picked up for washing. Order ${order.id}. Reply STOP to opt out.`,washing_complete:`Cotton Roots: Washing is complete for bag ${order.bag_id}. We will update you when it is returned. Order ${order.id}. Reply STOP to opt out.`,payment_required:`Cotton Roots: Bag ${order.bag_id} has been returned. Payment is ready in My Laundry. Order ${order.id}. Reply STOP to opt out.`,ready:`Cotton Roots: Payment received. ${order.service==='full_service'?'Please confirm delivery in My Laundry.':'Your bag is ready for pickup at the shop.'} Order ${order.id}. Reply STOP to opt out.`}[event]);
  const deliverSms=async record=>{
   if(!notifications){record.status='queued';record.error='Twilio is not configured';return}
@@ -186,7 +190,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const origin=req.headers.origin;
     if(origin&&origin!==(remoteOrigin||`http://${req.headers.host}`))fail(403,'Origin rejected');
     if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'JSON required');
-    const bodyLimit=/^\/api\/orders\/[^/]+\/actions$/.test(path)?750000:16384;
+    const bodyLimit=/^\/api\/orders\/[^/]+\/actions$/.test(path)||path==='/api/weights/read'?750000:16384;
     let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>bodyLimit)fail(413,'Request too large');chunks.push(chunk)}
     try{body=JSON.parse(Buffer.concat(chunks).toString())}catch{fail(400,'Invalid JSON')}
     if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Object required');
@@ -281,6 +285,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const order=state.orders.find(item=>item.id===decodeURIComponent(proofMatch[1]));if(!order||!visible(order,user)||!order.delivery_proof_file)fail(404,'Delivery photo not found');
      headers['Content-Type']=order.delivery_proof_type||'image/jpeg';headers['Cache-Control']='private, no-store';res.writeHead(200,headers);res.end(readFileSync(resolve(proofDir,order.delivery_proof_file)));return;
     }
+    const weightProofMatch=path.match(/^\/api\/orders\/([^/]+)\/weight-proof$/);
+    if(weightProofMatch){
+     const order=state.orders.find(item=>item.id===decodeURIComponent(weightProofMatch[1]));if(!order||!visible(order,user)||!order.weight_proof_file)fail(404,'Scale photo not found');
+     headers['Content-Type']=order.weight_proof_type||'image/jpeg';headers['Cache-Control']='private, no-store';res.writeHead(200,headers);res.end(readFileSync(resolve(proofDir,order.weight_proof_file)));return;
+    }
     if(path==='/api/dashboard'){
      if(user.role==='customer'){
       const orders=state.orders.filter(o=>o.customer_id===user.id),active=orders.filter(o=>!['picked_up','cancelled'].includes(o.status));
@@ -355,7 +364,10 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    if(state.keys[key]){if(state.keys[key].fingerprint!==fingerprint)fail(409,'Key reused with different request');return send(200,state.keys[key].result)}
    const before=JSON.stringify(state);let result;
    try {
-    if(path==='/api/agreements/accept'){
+    if(path==='/api/weights/read'){
+     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const photo=photoPayload(body.photo,'scale reading');let recognized;try{recognized=await (await weightReader()).recognize(photo.bytes)}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
+     const candidates=(recognized.data.text.match(/\d{1,3}(?:[.,]\d{1,2})?/g)||[]).map(value=>Number(value.replace(',','.'))).filter(value=>value>=0.1&&value<=200);if(!candidates.length)fail(422,'The scale number could not be read. Move closer, avoid glare, and retake the photo');result={measuredPounds:candidates[0],confidence:Math.round(recognized.data.confidence||0)};
+    }else if(path==='/api/agreements/accept'){
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
      user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();user.agreement_conditions=[...required];result={user:publicUser(user)};
@@ -537,6 +549,9 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      }else{
       if(action===ACTION.WEIGH&&(typeof body.measuredPounds!=='number'||body.measuredPounds>200))fail(400,'Weight must be at most 200 lb');
       if(action===ACTION.WASH_COMPLETE&&o.wash_completed_at||action===ACTION.RETURN_BAG&&o.return_bag_scanned_at)fail(409,'Scan already recorded');
+      let weightProof=null;if(action===ACTION.WEIGH){
+       const photo=photoPayload(body.weightPhoto,'scale reading');weightProof={...photo,file:`${token()}.${photo.type==='image/png'?'png':'jpg'}`};
+      }
       let deliveryProof=null;if(action===ACTION.RETURN_BAG&&o.service==='full_service'){
        const match=typeof body.deliveryPhoto==='string'&&body.deliveryPhoto.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/);if(!match)fail(400,'Take a delivery photo before completing the return');
        const bytes=Buffer.from(match[2],'base64');if(bytes.length<1000||bytes.length>500000)fail(400,'Delivery photo must be between 1 KB and 500 KB');
@@ -545,6 +560,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       }
       let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
       if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
+      if(weightProof){writeFileSync(resolve(proofDir,weightProof.file),weightProof.bytes,{mode:0o600});updated.weight_proof_file=weightProof.file;updated.weight_proof_type=weightProof.type;updated.weight_photo_at=new Date().toISOString()}
       if(deliveryProof){writeFileSync(resolve(proofDir,deliveryProof.file),deliveryProof.bytes,{mode:0o600});updated.delivery_proof_file=deliveryProof.file;updated.delivery_proof_type=deliveryProof.type;updated.delivery_photo_at=new Date().toISOString()}
       if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved,{dropoff:updated.customer_rate_per_lb??DEFAULT_PRICING.dropoff,full_service:updated.customer_rate_per_lb??DEFAULT_PRICING.full_service,rushPerLb:updated.rush_rate_per_lb??DEFAULT_PRICING.rushPerLb},updated.delivery_fee||0);
       state.orders[index]=updated;result={order:publicOrder(updated)};
