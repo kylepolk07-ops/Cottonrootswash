@@ -2010,7 +2010,7 @@ async function home() {
     counts,
     customer ? dashboard.activeOrders : dashboard.activeJobs,
     customer ? "In progress" : "Active jobs",
-    customer?null:()=>route("orders"),
+    ()=>route("orders"),
   );
   stat(
     counts,
@@ -2023,13 +2023,13 @@ async function home() {
         ).length
       : dashboard.availableDays,
     customer ? "Ready to collect" : "Available days",
-    customer?null:()=>route("availability"),
+    customer?()=>route("orders"):()=>route("availability"),
   );
   stat(
     counts,
     customer ? dashboard.bagCount : dashboard.offers,
     customer ? "My bags" : "Available offers",
-    customer?null:()=>route("offers"),
+    customer?()=>route("bags"):()=>route("offers"),
   );
   const actions = node("div", undefined, { class: "choice-grid" });
   intro.append(actions);
