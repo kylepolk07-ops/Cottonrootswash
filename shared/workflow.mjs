@@ -27,7 +27,7 @@ export function transition(order,action,ctx={}){
       o.measured_pounds=Number(ctx.measuredPounds);o.billed_pounds=roundUpHalfPound(ctx.measuredPounds);o.weighed_at=at;break;
     case ACTION.CHECK_OUT:
       requireIt(o.status===ORDER_STATUS.ACCEPTED && o.billed_pounds>0,'Weigh laundry before check-out');
-      requireIt(ctx.actorId===o.assigned_contractor_id && (o.service==='full_service'?ctx.bagVerified===true:ctx.wallStationVerified===true),o.service==='full_service'?'Assigned contractor must scan the bag at customer pickup':'Assigned contractor must scan shop wall QR');
+      requireIt(ctx.actorId===o.assigned_contractor_id && (o.service==='full_service'?ctx.bagVerified===true:ctx.shopConfirmed===true),o.service==='full_service'?'Assigned contractor must scan the bag at customer pickup':'Assigned contractor must confirm shop checkout');
       o.status=ORDER_STATUS.WASHING;o.checked_out_at=at;break;
     case ACTION.WASH_COMPLETE:
       requireIt(o.status===ORDER_STATUS.WASHING && ctx.actorId===o.assigned_contractor_id,'Assigned contractor must finish washing');
@@ -38,7 +38,7 @@ export function transition(order,action,ctx={}){
       o.return_bag_scanned_at=at;if(o.service==='full_service'){o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;o.delivered_at=at;}break;
     case ACTION.CHECK_IN:
       requireIt(o.status===ORDER_STATUS.WASHING && o.return_bag_scanned_at,'Scan returned bag first');
-      requireIt(ctx.actorId===o.assigned_contractor_id && ctx.wallStationVerified===true,'Assigned contractor must scan wall QR');
+      requireIt(ctx.actorId===o.assigned_contractor_id && ctx.shopConfirmed===true,'Assigned contractor must confirm shop check-in');
       o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;break;
     case ACTION.PAYMENT:
       requireIt(o.status===ORDER_STATUS.PAYMENT_PENDING,'Order not awaiting payment');

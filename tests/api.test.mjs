@@ -238,14 +238,14 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  assert.ok(!(await unassigned.request('/api/orders')).data.orders.some(order=>order.id===o.id));
  const assignedOrder=(await assigned.request('/api/orders')).data.orders.find(order=>order.id===o.id);assert.ok(assignedOrder.customer_name,'Assigned contractor needs the customer name for physical bag verification');assert.equal(assignedOrder.customer_id,undefined,'Internal customer ID stays private');assert.equal(assignedOrder.laundry_notes,'Cold water. Keep the blue school shirt separate.');
  denied(await action(unassigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto}));
- denied(await action(assigned,o.id,'wall_checkout',scan));
+ denied(await action(assigned,o.id,'wall_checkout',{shopConfirmed:true}));
  denied(await action(assigned,o.id,'record_weight',{bagToken:'wrong',measuredPounds:8.1,weightPhoto}));
  const weighed=await action(assigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto});assert.equal(weighed.status,200,JSON.stringify(weighed.data));assert.equal(weighed.data.order.billed_pounds,8.5);
- assert.equal((await action(assigned,o.id,'wall_checkout',scan)).status,200);
- denied(await action(assigned,o.id,'wall_checkin',scan));
+ assert.equal((await action(assigned,o.id,'wall_checkout',{shopConfirmed:true})).status,200);
+ denied(await action(assigned,o.id,'wall_checkin',{shopConfirmed:true}));
  assert.equal((await action(assigned,o.id,'wash_complete')).status,200);
  assert.equal((await action(assigned,o.id,'return_bag',scan)).status,200);
- assert.equal((await action(assigned,o.id,'wall_checkin',scan)).status,200);
+ assert.equal((await action(assigned,o.id,'wall_checkin',{shopConfirmed:true})).status,200);
  denied(await action(c,o.id,'customer_pickup',scan));
  const earnings=await assigned.request('/api/earnings');assert.equal(earnings.status,200);assert.ok(earnings.data.earnings.every(e=>e.status!=='approved'&&e.status!=='paid'));
  const owner=await h.client('owner');const audit=JSON.stringify((await owner.request('/api/management')).data.audit);

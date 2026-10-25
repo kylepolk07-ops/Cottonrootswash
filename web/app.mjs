@@ -680,7 +680,7 @@ async function orders() {
         : "My jobs",
     app === "customer"
       ? "Updates are shared securely with the shop. Payment and pickup are separate steps."
-      : "Accept only when you can meet the displayed deadline. Scan the bag and shop station at each required visit.",
+      : "Accept only when you can meet the displayed deadline. Scan the matching bag and confirm each handoff.",
   );
   const currentOrders=app==="customer"?orders.filter(order=>!["picked_up","cancelled"].includes(order.status)):[];
   if(app==="customer"&&!user.paymentMethodReady){intro.append(node("p","Verify your payment method before starting laundry.",{class:"note"}));button(intro,"Verify payment in Action Center",()=>route("alerts"))}
@@ -781,7 +781,7 @@ async function orders() {
       if (o.status === "accepted")
         button(
           c,
-          o.billed_pounds ? (o.service==="full_service"?"Confirm customer pickup":"Scan station & check out") : (o.service==="full_service"?"Scan bag & weigh at pickup":"Scan bag & weigh"),
+          o.billed_pounds ? (o.service==="full_service"?"Confirm customer pickup":"Confirm shop checkout") : (o.service==="full_service"?"Scan bag & weigh at pickup":"Scan bag & weigh"),
           () =>
             actionWizard(
               o,
@@ -849,12 +849,12 @@ async function actionWizard(o, action) {
   const success = {
     drop_off: "Drop-off saved. Your laundry is checked in at the shop.",
     customer_pickup: o.service==="full_service"?"Delivery confirmed. Enjoy your fresh laundry!":"Pickup complete. Enjoy your fresh laundry!",
-    record_weight: "Weight saved. Next, scan the shop station to check out.",
+    record_weight: "Weight saved. Next, confirm checkout from the shop.",
     wall_checkout:
       "Checked out. Wash, dry, and fold this order, then return to My jobs.",
     wash_complete:
       "Laundry marked clean. Next, bring back and scan the same bag.",
-    return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Bag scan saved. Next, scan the shop station to check in.",
+    return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Bag scan saved. Next, confirm check-in at the shop.",
     wall_checkin:
       "Return complete. Earnings stay pending until customer payment is verified.",
     accept_job: "Offer accepted. Today was added to your availability. Open My jobs when you are ready to begin.",
@@ -889,19 +889,12 @@ async function actionWizard(o, action) {
   }
   async function station() {
     clear();
-    stage.append(
-      node(
-        "p",
-        "Now scan the shop station QR. Your bag scan stays in this guided step until you confirm.",
-        { class: "note" },
-      ),
-    );
-    const stationToken = await scanField(stage, "Scan the shop station QR");
-    button(stage, "Confirm this step", async () => {
-      body.stationToken = stationToken.value.trim();
-      await submit();
-    });
-    if (action === "drop_off") button(stage, "Back: scan bag again", bag, true);
+    const checkingOut=action==="wall_checkout",warning=node("section",undefined,{class:"custody-confirmation"});
+    warning.append(node("p",checkingOut?"DIRTY LAUNDRY · SHOP CHECKOUT":"CLEAN LAUNDRY · SHOP CHECK-IN",{class:"eyebrow"}),node("h2",`Verify ${String(o.bag_id||"bag").toUpperCase()}`));
+    const details=node("dl");for(const [label,value] of [["Bag",String(o.bag_id||"Not assigned").toUpperCase()],["Customer",o.customer_name||"Assigned customer"],["Condition",checkingOut?"DIRTY — leaving for washing":"CLEAN — returned after washing"],["Location","Cotton Roots & Company"]])details.append(node("dt",label),node("dd",value));
+    warning.append(details,node("p","Confirm only while you and this matching bag are physically at the Cotton Roots shop.",{class:"confirm-warning"}));stage.append(warning);
+    const confirm=button(stage,checkingOut?"YES, I AM CHECKING OUT THIS BAG":"YES, I AM CHECKING IN THIS BAG",async()=>{body.shopConfirmed=true;await submit()});confirm.classList.add("custody-confirm");
+    button(stage,"Cancel and return to My jobs",()=>route("orders"),true);
   }
   function weigh() {
     clear();
@@ -1348,7 +1341,6 @@ async function management() {
     );
     for (const [label, value] of [
       ["Sample bag code", kit.bagToken],
-      ["Sample station code", kit.stationToken],
     ]) {
       const input = field(sample, label, "text", value);
       input.readOnly = true;
@@ -1471,7 +1463,7 @@ function managementWorkspace(data) {
     ["complaints", "💬", "Customer complaints", "Review and resolve customer reports"],
     ["notifications", "📱", "Text notifications", "Queued, sent, skipped, and failed order texts"],
     ["pricing", "🏷", "Pricing", "Customer rates, bag price, and Washing Specialist pay"],
-    ["tools", "🧪", "Pilot tools", "Synthetic QR and station test codes"],
+    ["tools", "🧪", "Pilot tools", "Synthetic bag QR for private testing"],
   ])
     choice(choices, icon, title, description, () => {
       managementView = key;
@@ -1557,16 +1549,13 @@ function moneyManagement(data) {
   c.append(node("h3","Recorded costs"));if(!visibleCosts.length)c.append(node("p","No business costs in this date range.",{class:"muted"}));for(const cost of visibleCosts){const row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${cost.description} · $${Number(cost.amount).toFixed(2)}`),node("p",`${cost.category} · ${cost.date}`,{class:"muted"}));button(row,"Delete cost",async()=>{if(!confirm(`Delete ${cost.description}?`))return;await api("/api/management/costs",{action:"delete",id:cost.id});await route("management");message("Business cost deleted.")},true);c.append(row)}
 }
 async function managementTestTools() {
-  const kit = await api("/api/management/test-kit"), c = card("🧪", "Pilot tools", "Synthetic QR and station codes for private testing only.");
+  const kit = await api("/api/management/test-kit"), c = card("🧪", "Pilot tools", "Synthetic bag QR for private testing only.");
   managementBack(c);
   c.append(
-    node("h3", "Shop drop-off QR"),
-    node("p", "Post this QR at the shop station for Washing Specialists to scan when checking laundry out and back in. Customers only scan and verify their own bag.", { class: "note" }),
-    node("img", undefined, { src: "/api/management/test-kit/station-qr", alt: "Shop drop-off station QR code", class: "test-bag-qr" }),
     node("h3", "Sample bag QR"),
     node("img", undefined, { src: "/api/management/test-kit/bag-qr", alt: "Synthetic test bag QR code", class: "test-bag-qr" }),
   );
-  for (const [label, value] of [["Sample bag code", kit.bagToken], ["Sample station code", kit.stationToken]]) { const input = field(c, label, "text", value); input.readOnly = true; input.addEventListener("focus", () => input.select()); }
+  for (const [label, value] of [["Sample bag code", kit.bagToken]]) { const input = field(c, label, "text", value); input.readOnly = true; input.addEventListener("focus", () => input.select()); }
 }
 function managementTables(data) {
   const c = card(
@@ -1902,10 +1891,10 @@ function stepLabel(action) {
       drop_off: "SHOP VISIT 1 · CUSTOMER DROPOFF",
       accept_job: "BEFORE YOU ACCEPT · CHECK THE DEADLINE",
       record_weight: "SHOP VISIT 1 · BAG + WEIGHT",
-      wall_checkout: "SHOP VISIT 1 · STATION CHECKOUT",
+      wall_checkout: "SHOP VISIT 1 · SHOP CHECKOUT",
       wash_complete: "AWAY FROM SHOP · CLEAN & FOLD",
       return_bag: "SHOP VISIT 2 · SAME BAG",
-      wall_checkin: "SHOP VISIT 2 · STATION CHECK-IN",
+      wall_checkin: "SHOP VISIT 2 · SHOP CHECK-IN",
       staff_release: "PAYMENT VERIFIED · PAID BIN",
       customer_pickup: "PAID & READY · MATCH YOUR BAG",
       rate: "ORDER COMPLETE · THANK YOU",
@@ -2056,7 +2045,7 @@ async function home() {
       [
         "1",
         "Bring & scan",
-        "Claim your bag, book laundry, then scan your bag and the shop station.",
+        "Claim your bag, book laundry, then scan and confirm the matching bag at each handoff.",
       ],
       [
         "2",
@@ -2147,7 +2136,7 @@ function guide(index = 0) {
     [
       "⚖️",
       "Weigh before you leave.",
-      "Use the measured scale reading. We round up to the next ½ lb. Confirm the weight, then scan the wall station to check out.",
+      "Use the measured scale reading. We round up to the next ½ lb. Confirm the weight, then confirm shop checkout.",
     ],
     [
       "🫧",
@@ -2167,7 +2156,7 @@ function guide(index = 0) {
     [
       "🏪",
       "Return on your second visit.",
-      "Scan the same bag, then the shop station to check in. Returned laundry is not automatically paid or ready for customer pickup.",
+      "Scan the same bag, then confirm shop check-in. Returned laundry is not automatically paid or ready for customer pickup.",
     ],
     [
       "🌱",

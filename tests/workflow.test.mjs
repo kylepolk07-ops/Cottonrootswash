@@ -14,20 +14,22 @@ test('no fake dropoff or unapproved/deadline-less job acceptance',()=>{
  assert.equal(transition(o,ACTION.ACCEPT,contractor).status,ORDER_STATUS.ACCEPTED);
  assert.equal(transition({...o,rush_requested:true,rush_approved:false},ACTION.ACCEPT,contractor).rush_approved,true);
 });
-test('weight rounds upward and checkout requires weight, right contractor, wall station',()=>{
- const o=throughAccepted(); assert.throws(()=>transition(o,ACTION.CHECK_OUT,{...actor,wallStationVerified:true}));
+test('weight rounds upward and checkout requires weight, right contractor, and shop confirmation',()=>{
+ const o=throughAccepted(); assert.throws(()=>transition(o,ACTION.CHECK_OUT,{...actor,shopConfirmed:true}));
  assert.throws(()=>transition(o,ACTION.WEIGH,{...actor,bagVerified:true,measuredPounds:0}));
  const weighed=transition(o,ACTION.WEIGH,{...actor,bagVerified:true,measuredPounds:12.1});
  assert.equal(weighed.billed_pounds,12.5);
- assert.throws(()=>transition(weighed,ACTION.CHECK_OUT,{actorId:'other',wallStationVerified:true}));
- assert.equal(transition(weighed,ACTION.CHECK_OUT,{...actor,wallStationVerified:true}).status,ORDER_STATUS.WASHING);
+ assert.throws(()=>transition(weighed,ACTION.CHECK_OUT,{actorId:'other',shopConfirmed:true}));
+ assert.throws(()=>transition(weighed,ACTION.CHECK_OUT,actor));
+ assert.equal(transition(weighed,ACTION.CHECK_OUT,{...actor,shopConfirmed:true}).status,ORDER_STATUS.WASHING);
 });
-test('return requires wash completion, bag scan then wall scan; Square cannot be spoofed',()=>{
- let o=transition(transition(throughAccepted(),ACTION.WEIGH,{...actor,bagVerified:true,measuredPounds:8.3}),ACTION.CHECK_OUT,{...actor,wallStationVerified:true});
- assert.throws(()=>transition(o,ACTION.CHECK_IN,{...actor,wallStationVerified:true}));
+test('return requires wash completion, bag scan, then shop confirmation; Square cannot be spoofed',()=>{
+ let o=transition(transition(throughAccepted(),ACTION.WEIGH,{...actor,bagVerified:true,measuredPounds:8.3}),ACTION.CHECK_OUT,{...actor,shopConfirmed:true});
+ assert.throws(()=>transition(o,ACTION.CHECK_IN,{...actor,shopConfirmed:true}));
  o=transition(o,ACTION.WASH_COMPLETE,actor);
  o=transition(o,ACTION.RETURN_BAG,{...actor,bagVerified:true});
- o=transition(o,ACTION.CHECK_IN,{...actor,wallStationVerified:true});
+ assert.throws(()=>transition(o,ACTION.CHECK_IN,actor));
+ o=transition(o,ACTION.CHECK_IN,{...actor,shopConfirmed:true});
  assert.equal(o.status,ORDER_STATUS.PAYMENT_PENDING);
  assert.throws(()=>transition(o,ACTION.PAYMENT,{squareEventId:'fake',verifiedServerWebhook:false}));
  o=transition(o,ACTION.PAYMENT,{squareEventId:'evt1',verifiedServerWebhook:true});

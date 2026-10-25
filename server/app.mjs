@@ -547,7 +547,6 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     }else if(/^\/api\/orders\/[^/]+\/actions$/.test(path)){
      const id=path.split('/')[3],index=state.orders.findIndex(o=>o.id===id),o=state.orders[index];if(!o||!visible(o,user))fail(404,'Order not found');
      const action=body.action,bag=state.bags.find(b=>b.id===o.bag_id),bagVerified=typeof body.bagToken==='string'&&body.bagToken===bag.token;
-     const wallStationVerified=typeof body.stationToken==='string'&&body.stationToken===state.stationToken;
      const customerActions=[ACTION.DROP_OFF,ACTION.PICKUP,'rate'];const contractorActions=[ACTION.ACCEPT,ACTION.WEIGH,ACTION.CHECK_OUT,ACTION.WASH_COMPLETE,ACTION.RETURN_BAG,ACTION.CHECK_IN];
      if(customerActions.includes(action)){if(user.role!=='customer'||o.customer_id!==user.id)fail(403,'Order owner required');if(action===ACTION.DROP_OFF&&payment?.provider==='stripe'&&!user.payment_method_ready)fail(403,'Verify your payment method before dropping off laundry')}
      else if(contractorActions.includes(action)){if(user.role!=='contractor'||!user.approved)fail(403,'Approved contractor required');if(action===ACTION.ACCEPT&&payment?.connect&&!user.payout_onboarding_complete)fail(403,'Complete tax, identity, and bank payout setup before accepting work');if(action!==ACTION.ACCEPT&&o.assigned_contractor_id!==user.id)fail(403,'Assigned contractor required')}
@@ -567,7 +566,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
        if(match[1]==='image/jpeg'&&!(bytes[0]===0xff&&bytes[1]===0xd8)||match[1]==='image/png'&&!(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47))fail(400,'Invalid delivery photo');
        deliveryProof={bytes,type:match[1],file:`${token()}.${match[1]==='image/png'?'png':'jpg'}`};
       }
-      let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,availabilityConfirmed:body.availabilityConfirmed===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
+      let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,availabilityConfirmed:body.availabilityConfirmed===true,shopConfirmed:body.shopConfirmed===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
       if(action===ACTION.ACCEPT){const today=shopDateKey();if(!user.days.includes(today))user.days.push(today)}
       if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
       if(weightProof){writeFileSync(resolve(proofDir,weightProof.file),weightProof.bytes,{mode:0o600});updated.weight_proof_file=weightProof.file;updated.weight_proof_type=weightProof.type;updated.weight_photo_at=new Date().toISOString()}
