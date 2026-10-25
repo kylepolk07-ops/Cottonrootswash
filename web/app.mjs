@@ -603,7 +603,7 @@ async function actionCenter(){
 async function customerRewards(){
  const me=await api("/api/me");rewardsPreview=me.rewards;
  const c=card("★","Cotton Roots Rewards","Earn rewards while using the service and when friends become paying customers.");
- const stats=node("div",undefined,{class:"stat-grid"});stat(stats,rewardsPreview?.points||0,"points");stat(stats,`$${Number(rewardsPreview?.creditDollars||0).toFixed(0)}`,"earned credit");stat(stats,rewardsPreview?.referralPoints||0,"referral points");c.append(stats,node("p",rewardsPreview?.program||"Rewards will appear after verified payments.",{class:"note"}));
+ const stats=node("div",undefined,{class:"stat-grid"});stat(stats,rewardsPreview?.points||0,"points");stat(stats,`$${Number(rewardsPreview?.creditDollars||0).toFixed(0)}`,"earned credit");stat(stats,rewardsPreview?.pointsToNextCredit||250,"points to next $5");c.append(stats,node("p",rewardsPreview?.program||"Rewards will appear after verified payments.",{class:"note"}));
  const code=field(c,"Your referral username","text",rewardsPreview?.referralCode||user.username);code.readOnly=true;code.addEventListener("focus",()=>code.select());
  button(c,"Copy referral username",async()=>{await navigator.clipboard.writeText(code.value);message("Referral username copied.")},true);
  c.append(node("p","Reward credit will be available for eligible future checkout after the live payment redemption step is enabled. Points have no cash value and are tied to this account.",{class:"muted"}));
