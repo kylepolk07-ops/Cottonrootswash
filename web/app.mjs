@@ -589,7 +589,8 @@ async function customerAlerts(){
 async function actionCenter(){
  if(user.role==="customer"){
   const me=await api("/api/me");user=me.user;
-  if(!user.paymentMethodReady){const required=card("🔔","Action required: verify payment","A valid payment method must be securely verified before you can place a laundry order.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});}
+  if(!user.paymentMethodReady){const required=card("🔔","Action required: verify payment","A valid payment method must be securely verified before you can place a laundry order.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});required.append(node("p","Confirmation appears here after Stripe returns you to Cotton Roots. Cotton Roots does not currently send a separate payment-setup text or email.",{class:"muted"}))}
+  else {const ready=card("✓","Payment method verified","Stripe confirmed that this account is ready to place laundry orders.");ready.append(node("p","Your complete card number remains with Stripe and is not stored by Cotton Roots.",{class:"muted"}))}
   return customerAlerts();
  }
  const [{orders=[]},onboarding]=await Promise.all([api("/api/orders"),api("/api/contractor-onboarding")]);
@@ -2188,7 +2189,16 @@ try {
   user = d.user;
   csrf = d.csrf;
   await render();
-  const checkout = new URLSearchParams(location.search).get("checkout");
+  const query=new URLSearchParams(location.search),checkout=query.get("checkout"),paymentSetup=query.get("payment_setup");
+  if(paymentSetup){
+    history.replaceState({},"",location.pathname);
+    if(paymentSetup==="success"){
+      message("Stripe returned successfully. Checking your payment verification…");
+      for(let attempt=0;attempt<6&&!user.paymentMethodReady;attempt++){await new Promise(resolve=>setTimeout(resolve,1000));const status=await api("/api/me");user=status.user}
+      if(user.paymentMethodReady){page="alerts";await render();message("Payment method verified. You can now place laundry orders.")}
+      else message("Stripe returned, but confirmation is still processing. Open Alerts and refresh in a moment.",true);
+    }else message("Payment setup was canceled. No payment method was saved.",true);
+  }
   if (checkout) {
     history.replaceState({}, "", location.pathname);
     message(
