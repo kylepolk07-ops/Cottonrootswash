@@ -9,13 +9,14 @@ export function stripeConfig(env=process.env,origin){
  if(!['stripe_test','stripe_live'].includes(env.CRC_PAYMENT_PROVIDER))throw Error('Stripe payment mode must be explicit');
  const mode=env.CRC_PAYMENT_PROVIDER==='stripe_live'?'live':'test';
  if(typeof origin!=='string'||!origin.startsWith('https://'))throw Error('Stripe requires the exact HTTPS app origin');
- const secretKey=String(env.STRIPE_SECRET_KEY||'').trim();
+ const secretKey=String(mode==='live'?env.STRIPE_LIVE_SECRET_KEY||env.STRIPE_SECRET_KEY:env.STRIPE_SECRET_KEY||'').trim();
+ const webhookSecret=String(mode==='live'?env.STRIPE_LIVE_WEBHOOK_SECRET||env.STRIPE_WEBHOOK_SECRET:env.STRIPE_WEBHOOK_SECRET||'').trim();
  if(!new RegExp(`^(?:sk|rk)_${mode}_\\S{8,}$`).test(secretKey))throw Error(`A Stripe ${mode} secret or restricted key is required`);
- if(!/^whsec_[A-Za-z0-9_]{16,}$/.test(env.STRIPE_WEBHOOK_SECRET||''))throw Error(`A Stripe ${mode} webhook signing secret is required`);
- if(mode==='live')return {provider:'stripe',mode,origin,secretKey,webhookSecret:env.STRIPE_WEBHOOK_SECRET};
+ if(!/^whsec_[A-Za-z0-9_]{16,}$/.test(webhookSecret))throw Error(`A Stripe ${mode} webhook signing secret is required`);
+ if(mode==='live')return {provider:'stripe',mode,origin,secretKey,webhookSecret};
  const feeBps=Number(env.CRC_STRIPE_TEST_FEE_BPS),feeFixedCents=Number(env.CRC_STRIPE_TEST_FEE_FIXED_CENTS);
  if(!Number.isInteger(feeBps)||feeBps<0||feeBps>1000||!Number.isInteger(feeFixedCents)||feeFixedCents<0||feeFixedCents>500)throw Error('Explicit Stripe test fee estimate required');
- return {provider:'stripe',mode,origin,secretKey,webhookSecret:env.STRIPE_WEBHOOK_SECRET,feeBps,feeFixedCents};
+ return {provider:'stripe',mode,origin,secretKey,webhookSecret,feeBps,feeFixedCents};
 }
 export const stripeTestConfig=stripeConfig;
 

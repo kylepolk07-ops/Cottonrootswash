@@ -49,8 +49,9 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const cookieSecurity=remoteOrigin?'; Secure':'';
  mkdirSync(dataDir,{recursive:true,mode:0o700});
  try{chmodSync(dataDir,0o700)}catch(error){if(!(remoteOrigin&&dataDir==='/var/data'&&error?.code==='EPERM'))throw error}
- const db=new DatabaseSync(resolve(dataDir,'staging.sqlite'));
- chmodSync(resolve(dataDir,'staging.sqlite'),0o600);
+ const databaseFile=payment?.mode==='live'?'live.sqlite':'staging.sqlite';
+ const db=new DatabaseSync(resolve(dataDir,databaseFile));
+ chmodSync(resolve(dataDir,databaseFile),0o600);
  db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (id_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, csrf TEXT NOT NULL, expires INTEGER NOT NULL)');
  let row=db.prepare('SELECT value FROM state WHERE id=1').get();
  let state=row?JSON.parse(row.value):{users:[],bags:[],orders:[],audit:[],keys:{},stationToken:token()};

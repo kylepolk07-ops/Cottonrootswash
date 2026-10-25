@@ -25,6 +25,11 @@ test('Stripe live mode is explicit and does not add a processing-fee line item',
  const record=reconcileStripeCheckout(liveEvent,{orderId:'order-1',customerId:'customer',amountCents:3000,checkoutSessionId:'cs_live_ready123',mode:'live'});assert.equal(record.taxCents,258);assert.equal(record.totalCents,3258);
 });
 
+test('Stripe live mode prefers separately staged live secrets',()=>{
+ const live=stripeConfig({CRC_PAYMENT_PROVIDER:'stripe_live',STRIPE_SECRET_KEY:'sk_test_1234567890abcdef',STRIPE_WEBHOOK_SECRET:'whsec_test_1234567890abcdef',STRIPE_LIVE_SECRET_KEY:'rk_live_1234567890abcdef',STRIPE_LIVE_WEBHOOK_SECRET:'whsec_live_1234567890abcdef'},origin);
+ assert.equal(live.secretKey,'rk_live_1234567890abcdef');assert.equal(live.webhookSecret,'whsec_live_1234567890abcdef');
+});
+
 test('Stripe test fee estimate is explicit and grossed up without altering the trusted laundry subtotal',()=>{
  assert.deepEqual(estimateStripeTestCharge(3000,config),{baseAmountCents:3000,estimatedFeeCents:121,totalCents:3121,feeBps:290,feeFixedCents:30});
  for(const args of [[0,config],[3000,{feeBps:10001,feeFixedCents:30}],[3000,{feeBps:290,feeFixedCents:-1}]])assert.throws(()=>estimateStripeTestCharge(...args));
