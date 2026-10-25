@@ -2098,7 +2098,7 @@ async function home() {
       ),
     );
   }
-  const shop = card("🏪", "At the shop", "307 Locust Street, Sweetwater, TX");
+  const shop = card("🏪", "At the shop", "307 Locust Street, Sweetwater, TX 79556");
   shop.append(
     node(
       "p",

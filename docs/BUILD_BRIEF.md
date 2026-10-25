@@ -21,7 +21,7 @@ Create a source-controlled repository, staging environment and deployment runboo
 
 ## Fulfilment / safety
 - Monday–Friday business schedule. Due table currently: Mon by 2pm Tue 5pm; Mon after 2pm Wed 5pm; Tue by 2pm Wed 5pm; Tue after 2pm Fri 5pm; Wed by 2pm Fri 5pm; Wed after 2pm Mon 5pm; Thu by 2pm Fri 5pm; Thu after 2pm Mon 5pm; Friday Mon 5pm. Confirm any edge cases and holiday handling with owner. Rush 12 hours is only a REQUEST until feasible and approved, cannot silently promise it.
-- Physical shop at 307 Locust Street, Sweetwater, TX; after-hours self-service access previously discussed through 9 PM, subject to site access setup.
+- Physical shop at 307 Locust Street, Sweetwater, TX 79556; after-hours self-service access previously discussed through 9 PM, subject to site access setup.
 - Production authentication and authorization, DB row-level policies, service role restricted server-side, encrypted storage, data minimization, consent for SMS/notifications, audit trail, rate limit one-time codes, validated/rotatable wall station QR, bag assignment/replacement, duplicate scan handling, offline/no-camera fallback, upload protections, webhook signature checks and idempotency, backups, accessible mobile usability.
 - Keep source of truth for order states in database. Both frontends subscribe/read authorized changes and share same status enum. Never trust customer/contractor input to mark another account's records or to self-mark payment as verified.
 
