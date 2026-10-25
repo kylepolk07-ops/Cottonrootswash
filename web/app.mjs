@@ -418,7 +418,7 @@ async function render() {
     const {orders=[]}=await api("/api/orders");let unread=0;
     if(user.role==="customer"){
       const updates=[];
-      for(const order of orders)for(const [at,title] of [[order.paid_at,"Laundry ready for pickup"],[order.dropped_at,"Bag dropped off"]])if(at)updates.push(`customer:${order.id}:${title}:${at}`);
+      for(const order of orders)for(const [at,title] of [[order.returned_at||order.delivered_at,"Laundry ready for pickup"],[order.dropped_at,"Bag dropped off"]])if(at)updates.push(`customer:${order.id}:${title}:${at}`);
       unread=updates.filter(id=>!user.notificationAcks?.includes(id)).length+(!user.paymentMethodReady?1:0);
     }else if(user.role==="contractor"){
       unread=orders.filter(order=>order.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(order.status)).length+orders.filter(order=>!order.assigned_contractor_id&&['at_shop','offered'].includes(order.status)).length;
@@ -584,7 +584,7 @@ async function customerAlerts(){
  const response=await api("/api/orders"),events=[];
  const add=(order,at,title,text)=>{if(at)events.push({order,at,title,text})};
  for(const order of response.orders){
-  add(order,order.paid_at,"Laundry ready for pickup",order.service==="full_service"?`Bag ${order.bag_id} has been returned. Confirm delivery in My laundry.`:`Bag ${order.bag_id} is ready for pickup at Cotton Roots & Company.`);
+  add(order,order.returned_at||order.delivered_at,"Laundry ready for pickup",order.service==="full_service"?`Bag ${order.bag_id} has been returned. Confirm delivery in My laundry.`:`Bag ${order.bag_id} is clean and ready at Cotton Roots & Company. Complete payment in My laundry before pickup.`);
   add(order,order.dropped_at,"Bag dropped off",`Bag ${order.bag_id} was checked in at Cotton Roots & Company.`);
  }
  events.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
@@ -824,7 +824,6 @@ async function actionWizard(o, action) {
     customer_pickup: ["🛍", o.service==="full_service"?"Confirm your delivery":"Collect your bag"],
     record_weight: ["⚖", "Record measured weight"],
     wall_checkout: [o.service==="full_service"?"🚗":"🏪", o.service==="full_service"?"Confirm customer pickup":"Check out at shop"],
-    wash_complete: ["✨", "Finished washing?"],
     return_bag: ["🧺", o.service==="full_service"?"Return laundry to customer":"Return the same bag"],
     wall_checkin: ["🏪", "Check in at shop"],
     accept_job: ["📅", "Can you meet this deadline?"],
@@ -847,8 +846,6 @@ async function actionWizard(o, action) {
     record_weight: "Weight saved. Next, confirm checkout from the shop.",
     wall_checkout:
       "Checked out. Wash, dry, and fold this order, then return to My jobs.",
-    wash_complete:
-      "Laundry marked clean. Next, bring back and scan the same bag.",
     return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Bag scan saved. Next, confirm check-in at the shop.",
     wall_checkin:
       "Return complete. Earnings stay pending until customer payment is verified.",
@@ -1003,15 +1000,6 @@ async function actionWizard(o, action) {
       body.rating = Number(rating.value);
       await submit();
     });
-  } else if (action === "wash_complete") {
-    stage.append(
-      node(
-        "p",
-        o.service==="full_service"?"Confirm the laundry is washed, dried, and folded. Next, return it to the customer and scan the same bag.":"Confirm the laundry is washed, dried, folded, and ready to bring back. This does not check it in at the shop.",
-        { class: "note" },
-      ),
-    );
-    button(stage, "Confirm this step", submit);
   }
   button(c, "Back to laundry", () => route("orders"), true);
 }
@@ -1896,7 +1884,6 @@ function stepLabel(action) {
       accept_job: "BEFORE YOU ACCEPT · CHECK THE DEADLINE",
       record_weight: "SHOP VISIT 1 · BAG + WEIGHT",
       wall_checkout: "SHOP VISIT 1 · SHOP CHECKOUT",
-      wash_complete: "AWAY FROM SHOP · CLEAN & FOLD",
       return_bag: "SHOP VISIT 2 · SAME BAG",
       wall_checkin: "SHOP VISIT 2 · SHOP CHECK-IN",
       staff_release: "PAYMENT VERIFIED · PAID BIN",

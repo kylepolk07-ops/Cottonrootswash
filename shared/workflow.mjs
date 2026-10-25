@@ -2,7 +2,7 @@
 import {ORDER_STATUS, roundUpHalfPound} from './rules.mjs';
 export const ACTION=Object.freeze({
   DROP_OFF:'drop_off', ACCEPT:'accept_job', WEIGH:'record_weight', CHECK_OUT:'wall_checkout',
-  WASH_COMPLETE:'wash_complete', RETURN_BAG:'return_bag', CHECK_IN:'wall_checkin',
+  RETURN_BAG:'return_bag', CHECK_IN:'wall_checkin',
   PAYMENT:'square_payment_confirmed', RELEASE:'staff_release', PICKUP:'customer_pickup'
 });
 function requireIt(ok,message){if(!ok)throw new Error(message);}
@@ -29,9 +29,6 @@ export function transition(order,action,ctx={}){
       requireIt(o.status===ORDER_STATUS.ACCEPTED && o.billed_pounds>0,'Weigh laundry before check-out');
       requireIt(ctx.actorId===o.assigned_contractor_id && (o.service==='full_service'?ctx.bagVerified===true:ctx.shopConfirmed===true),o.service==='full_service'?'Assigned contractor must scan the bag at customer pickup':'Assigned contractor must confirm shop checkout');
       o.status=ORDER_STATUS.WASHING;o.checked_out_at=at;break;
-    case ACTION.WASH_COMPLETE:
-      requireIt(o.status===ORDER_STATUS.WASHING && ctx.actorId===o.assigned_contractor_id,'Assigned contractor must finish washing');
-      o.wash_completed_at=at;break;
     case ACTION.RETURN_BAG:
       requireIt(o.status===ORDER_STATUS.WASHING,'Laundry must be checked out before return');
       requireIt(ctx.actorId===o.assigned_contractor_id && ctx.bagVerified===true,'Assigned contractor must scan correct bag');
