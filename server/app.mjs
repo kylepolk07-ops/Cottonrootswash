@@ -169,7 +169,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     let file=files[path];
     if(!file&&/^\/web\/[a-zA-Z0-9_.-]+$/.test(path))file=path.slice(1);
     if(!file||!existsSync(resolve(root,file)))fail(404,'Not found');
-    const contentTypes={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.png':'image/png','.svg':'image/svg+xml; charset=utf-8','.mp4':'video/mp4','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8'};
+    const contentTypes={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml; charset=utf-8','.mp4':'video/mp4','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8'};
     const extension=file.includes('.')?`.${file.split('.').at(-1)}`:'';
     headers['Content-Type']=contentTypes[extension]||'text/html; charset=utf-8';
     const contents=readFileSync(resolve(root,file));headers['Content-Length']=String(contents.length);

@@ -1,6 +1,6 @@
 # Cotton Roots customer walkthrough
 
-This captioned walkthrough is designed for the website, social media, and an in-store screen. The current cut does not mention a door code. It states that walk-in access is available from 9 AM to 5 PM and customers should call 903-426-1543 before arriving for access from 5 PM to 9 PM.
+The website now uses a short cinematic concept cut with people acting out the customer journey: arriving, scanning a bag, careful folding, and enjoying clean clothes at home. Brief captions carry the message without turning the video into an instruction slideshow. The scenes are representative concept footage and can later be replaced with footage shot at the actual Cotton Roots location.
 
 ## Voiceover script
 
