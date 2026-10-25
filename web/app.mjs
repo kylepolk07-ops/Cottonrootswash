@@ -352,7 +352,20 @@ function customerRegistration(){
  const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),referralName=field(c,"Who referred you? Enter their name (optional)","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
  c.insertBefore(node("p","Management will verify the customer’s name before referral credit is awarded.",{class:"muted"}),username.previousElementSibling);
  username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 8 characters.",{class:"note"}));const accepted=customerAgreement(c);
- button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,referralName:referralName.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
+ button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,referralName:referralName.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});customerFirstVisit(username.value);});button(c,"Back to sign in",login,true);
+}
+function customerFirstVisit(username=""){
+  reset();
+  const c=card("🛍","Your account is ready — first, register your bag","Your first visit works a little differently. Come to the Cotton Roots shop once to check out a bag and connect it to your account.");
+  c.classList.add("first-visit-card");
+  const steps=[
+    ["1","Come to the shop","Visit 307 Locust Street during normal shop hours. Bring your dirty clothes with you."],
+    ["2","Check out one Cotton Roots bag","Sign in, open My bags, get the bag-box code, and take one bag."],
+    ["3","Scan the bag’s QR","This registers that exact bag to your account. Then place your dirty clothes inside it."],
+    ["4","Use the simple laundry process","After your bag is registered, book laundry and follow the guided drop-off and pickup steps."],
+  ];
+  for(const [number,title,copy] of steps){const row=node("div",undefined,{class:"instruction"}),text=node("div");text.append(node("h3",title),node("p",copy,{class:"muted"}));row.append(node("span",number,{class:"step-number"}),text);c.append(row)}
+  button(c,"SIGN IN AND REGISTER MY BAG",()=>{login();const usernameInput=document.querySelector('input[autocomplete="username"]');if(username&&usernameInput)usernameInput.value=username.trim().toLowerCase()});
 }
 function contractorApplication(){
   reset();
@@ -2018,6 +2031,12 @@ async function home() {
     api("/api/notices"),
   ]);
   const customer = app === "customer";
+  if(customer&&dashboard.bagCount===0){
+    const first=card("🛍","FIRST STEP: Register your Cotton Roots bag","Before your first laundry order, come to 307 Locust Street, check out one Cotton Roots bag, and scan its QR so the bag is assigned to you. You may bring your dirty clothes and place them in the bag during this visit.");
+    first.classList.add("first-visit-card");
+    first.append(node("p","After this one-time bag registration, the app guides you through the simple check-in and pickup process.",{class:"note"}));
+    button(first,"GET AND REGISTER MY FIRST BAG",()=>route("bags"));
+  }
   const intro = card(
     customer ? "🌿" : "☀️",
     customer ? "A little less laundry." : "A good day to help.",
@@ -2075,7 +2094,7 @@ async function home() {
       [
         "1",
         "Bring & scan",
-        "Claim your bag, book laundry, then scan and confirm the matching bag at each handoff.",
+        "On your first shop visit, check out a Cotton Roots bag and scan its QR to register it to your account. Then book laundry and follow each guided handoff.",
       ],
       [
         "2",
@@ -2142,7 +2161,9 @@ async function home() {
   shop.append(
     node(
       "p",
-      "Bring your own bag on your first visit. Transfer laundry into your tagged Cotton Roots bag. Only synthetic test codes are used in this trial.",
+      customer
+        ? "On your first visit, bring your dirty clothes, check out a tagged Cotton Roots bag, scan its QR to register it, and place your clothes inside."
+        : "Follow the guided bag scan at every handoff. Only the matching registered Cotton Roots bag should be accepted.",
       { class: "muted" },
     ),
   );
