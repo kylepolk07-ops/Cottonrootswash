@@ -896,6 +896,13 @@ async function actionWizard(o, action) {
     const confirm=button(stage,checkingOut?"YES, I AM CHECKING OUT THIS BAG":"YES, I AM CHECKING IN THIS BAG",async()=>{body.shopConfirmed=true;await submit()});confirm.classList.add("custody-confirm");
     button(stage,"Cancel and return to My jobs",()=>route("orders"),true);
   }
+  function confirmTakingBag(){
+    clear();const atCustomer=o.service==="full_service",warning=node("section",undefined,{class:"custody-confirmation"});
+    warning.append(node("p",atCustomer?"DIRTY LAUNDRY · CUSTOMER PICKUP":"DIRTY LAUNDRY · SHOP CHECKOUT",{class:"eyebrow"}),node("h2",`Verify ${String(o.bag_id||"bag").toUpperCase()}`));
+    const details=node("dl");for(const [label,value] of [["Bag",String(o.bag_id||"Not assigned").toUpperCase()],["Customer",o.customer_name||"Assigned customer"],["Condition","DIRTY — weighed and leaving for washing"],["Location",atCustomer?"Customer address":"Cotton Roots & Company"]])details.append(node("dt",label),node("dd",value));warning.append(details,node("p","Confirm only when this is the same bag you just weighed and you are taking custody of it.",{class:"confirm-warning"}));stage.append(warning);
+    const confirm=button(stage,"I CONFIRM I AM TAKING THIS BAG",async()=>{await api(`/api/orders/${encodeURIComponent(o.id)}/actions`,{action:"wall_checkout",...(atCustomer?{bagToken:body.bagToken}:{shopConfirmed:true})});await route("orders");message("Bag checked out. Wash, dry, and fold this order.")});confirm.classList.add("custody-confirm");
+    button(stage,"Cancel and return to My jobs",()=>route("orders"),true);
+  }
   function weigh() {
     clear();
     stage.append(
@@ -911,7 +918,7 @@ async function actionWizard(o, action) {
     stage.append(
       node(
         "p",
-        "Check the detected number before confirming. Billing rounds it upward to the next half-pound.",
+        "Check the number you typed against the photo before confirming. Billing rounds it upward to the next half-pound.",
         { class: "muted" },
       ),
     );
@@ -921,7 +928,9 @@ async function actionWizard(o, action) {
       if(!Number.isFinite(confirmedWeight)||confirmedWeight<0.1||confirmedWeight>200)throw Error("Enter the exact weight shown in the scale photo.");
       body.measuredPounds = confirmedWeight;
       body.weightPhoto=photoData;
-      await submit();
+      await api(`/api/orders/${encodeURIComponent(o.id)}/actions`,body);
+      confirmTakingBag();
+      message("Weight and scale photo saved. Now confirm that you are taking this bag.");
     });
     button(stage, "Back: scan bag again", bag, true);
   }
