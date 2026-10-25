@@ -369,7 +369,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    const before=JSON.stringify(state);let result;
    try {
     if(path==='/api/weights/read'){
-     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const submitted=Array.isArray(body.photos)?body.photos.slice(0,3):[body.photo],photos=submitted.map(value=>photoPayload(value,'scale reading'));const readings=[];try{const worker=await weightReader();for(const photo of photos){const recognized=await worker.recognize(photo.bytes),reading=chooseScaleWeight(recognized);if(reading)readings.push(reading)}}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
+     if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const submitted=Array.isArray(body.photos)?body.photos.slice(0,4):[body.photo],photos=submitted.map(value=>photoPayload(value,'scale reading'));const readings=[];try{const worker=await weightReader();for(let index=0;index<photos.length;index++){const recognized=await worker.recognize(photos[index].bytes),reading=chooseScaleWeight(recognized);if(reading)readings.push({...reading,score:reading.score+(index===0?35:0)})}}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
      readings.sort((a,b)=>b.score-a.score);const reading=readings[0];if(!reading)fail(422,'The scale number could not be read. Fill the photo with the illuminated display, avoid glare, and retake it');result={measuredPounds:reading.value,confidence:Math.round(reading.confidence||0)};
     }else if(path==='/api/agreements/accept'){
      const required=AGREEMENT_CONDITIONS[user.role]||[];
