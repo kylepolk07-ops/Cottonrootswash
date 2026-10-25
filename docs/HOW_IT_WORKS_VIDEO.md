@@ -1,10 +1,10 @@
 # Cotton Roots customer walkthrough
 
-This captioned walkthrough is designed for the website, social media, and an in-store screen. The current cut does not mention a door code. It states that the building is open to the public from 8 AM to 9 PM.
+This captioned walkthrough is designed for the website, social media, and an in-store screen. The current cut does not mention a door code. It states that walk-in access is available from 9 AM to 5 PM and customers should call 903-426-1543 before arriving for access from 5 PM to 9 PM.
 
 ## Voiceover script
 
-Welcome to Cotton Roots & Company Wash & Fold—laundry care built around your schedule. Our Sweetwater location is open to the public every day from 8 AM to 9 PM, so you can drop off and pick up when it works for you.
+Welcome to Cotton Roots & Company Wash & Fold—laundry care built around your schedule. Our Sweetwater location offers walk-in access from 9 AM to 5 PM. For access between 5 PM and 9 PM, call 903-426-1543 before arriving.
 
 Start by creating your Customer account. Choose drop-off service or pickup and return, then add your detergent choice and any special care instructions.
 

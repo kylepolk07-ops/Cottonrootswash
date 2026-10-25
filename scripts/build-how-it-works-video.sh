@@ -19,7 +19,7 @@ titles=(
   "Cotton Roots & Company"
 )
 bodies=(
-  "Open to the public every day from 8 AM to 9 PM. No waiting at a counter."
+  "Walk in from 9 AM to 5 PM. For access between 5 PM and 9 PM, call 903-426-1543 before arriving."
   "Register in the app and keep your contact and service address up to date."
   "Choose drop-off or pickup and return. Add detergent choices and special care notes."
   "At 307 Locust Street, scan the bag and confirm that you are dropping off dirty laundry."
@@ -37,7 +37,7 @@ for i in "${!titles[@]}"; do
     -font "$BOLD" -fill '#f2ce79' -pointsize 23 -gravity northwest -annotate +270+75 'COTTON ROOTS & COMPANY' \
     -font "$BOLD" -fill white -pointsize 50 -gravity northwest -annotate +270+122 "${titles[$i]}" \
     \( -background none -fill '#f8f0dc' -font "$FONT" -pointsize 29 -size 820x250 caption:"${bodies[$i]}" \) -gravity northwest -geometry +270+235 -composite \
-    -font "$BOLD" -fill '#f2ce79' -pointsize 22 -gravity southwest -annotate +72+48 'WASH & FOLD  •  8 AM–9 PM  •  307 LOCUST STREET' \
+    -font "$BOLD" -fill '#f2ce79' -pointsize 22 -gravity southwest -annotate +72+48 'WASH & FOLD  •  9 AM–5 PM  •  AFTER-HOURS ACCESS 5–9 PM BY PHONE' \
     "$WORK/$frame.png"
 done
 
