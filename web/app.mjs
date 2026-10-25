@@ -259,6 +259,25 @@ function login() {
       ? "Sign in with your saved Customer username and password."
       : "Sign in with your Washing Specialist username and password. Owners use their Management login here.",
   );
+  const signup = node("section", undefined, {
+    class: "signup-callout",
+    "aria-label": app === "customer" ? "Create a Customer account" : "Apply as a Washing Specialist",
+  });
+  signup.append(
+    node("strong", "DON’T HAVE AN ACCOUNT?"),
+    node(
+      "p",
+      app === "customer"
+        ? "New customers start here. Create your account before signing in."
+        : "Want to wash clothes and earn money? Start your Washing Specialist application here.",
+    ),
+  );
+  button(
+    signup,
+    app === "customer" ? "CREATE A CUSTOMER ACCOUNT" : "APPLY AS A WASHING SPECIALIST",
+    app === "customer" ? customerRegistration : contractorApplication,
+  );
+  c.append(signup);
   const f = node("form");
   c.append(f);
   let remembered=null;try{remembered=JSON.parse(localStorage.getItem(rememberedIdentityKey)||"null")}catch{}
@@ -312,7 +331,6 @@ function login() {
     }
   });
   if(app==="contractor"&&window.PublicKeyCredential){const options=node("details",undefined,{class:"management-signin-options"}),summary=node("summary","Management sign-in options"),panel=node("div");options.append(summary,panel);c.append(options);button(panel,"Use a Management passkey",async()=>{const name=username.value.trim().toLowerCase();if(!name)throw Error("Enter your Management username first.");const request=await api("/api/passkeys/authentication/options",{username:name});request.challenge=fromBase64url(request.challenge);request.allowCredentials=(request.allowCredentials||[]).map(item=>({...item,id:fromBase64url(item.id)}));const credential=await navigator.credentials.get({publicKey:request});if(!credential)throw Error("Passkey sign-in was canceled.");const d=await api("/api/passkeys/authentication/verify",{username:name,credential:credentialJSON(credential)});user=d.user;csrf=d.csrf;page="home";const me=await api("/api/me");paymentPreview=me.staging?.payment||null;pricingPreview=me.pricing;rewardsPreview=me.rewards;agreementVersion=me.agreement?.version||null;user=me.user;await render();message("You are signed in with your passkey.")},true);button(panel,"Set up a Management phone with a code",()=>{const existing=document.querySelector(".phone-setup-card");if(existing){existing.scrollIntoView({behavior:"smooth",block:"start"});existing.querySelector("input")?.focus();return}const setup=card("📱","Set up Management on this phone","On a computer already signed into Management, generate a one-time phone setup code. It expires after 10 minutes. The code identifies the correct Management account automatically.");setup.classList.add("phone-setup-card");const code=field(setup,"6-digit phone setup code","text");code.inputMode="numeric";code.autocomplete="one-time-code";code.maxLength=6;button(setup,"Continue",async()=>{const d=await api("/api/management/phone-setup/login",{code:code.value});user=d.user;csrf=d.csrf;page="home";await render();message("Phone verified. Now tap Add a passkey to this device.")});},true)}
-  button(c,app==="customer"?"Create a Customer account":"Apply as a Washing Specialist",app==="customer"?customerRegistration:contractorApplication,true);
   const chooser=node("a","← Choose what you want to do",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
 }
 function scrollAgreement(parent,{heading,title,items,acceptance,extra=[]}){
