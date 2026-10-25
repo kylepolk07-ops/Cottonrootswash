@@ -218,9 +218,9 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    }
    if(path==='/api/management/phone-setup/login'&&req.method==='POST'){
     const rateKey=`phone-setup:${req.socket.remoteAddress}`,now=Date.now();let attempt=attempts.get(rateKey);if(!attempt||now-attempt.at>600000)attempt={count:0,at:now};attempts.set(rateKey,attempt);if(++attempt.count>10)fail(429,'Too many attempts. Generate a new phone setup code');
-    const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',code=typeof body.code==='string'?body.code.trim():'',u=state.users.find(item=>item.username===username&&['owner','staff'].includes(item.role)&&item.active!==false),setup=u?.phoneSetup;
-    const supplied=Buffer.from(hash(code)),expected=Buffer.from(setup?.codeHash||hash('unavailable'));
-    if(!/^\d{6}$/.test(code)||!setup||setup.expires<now||supplied.length!==expected.length||!timingSafeEqual(supplied,expected)){if(setup){setup.failed=(setup.failed||0)+1;if(setup.failed>=5)delete u.phoneSetup;save()}fail(401,'That phone setup code is invalid or expired')}
+    const code=typeof body.code==='string'?body.code.trim():'',supplied=Buffer.from(hash(code));let u=null,setup=null;
+    for(const candidate of state.users.filter(item=>['owner','staff'].includes(item.role)&&item.active!==false&&item.phoneSetup)){const expected=Buffer.from(candidate.phoneSetup.codeHash);if(supplied.length===expected.length&&timingSafeEqual(supplied,expected)){u=candidate;setup=candidate.phoneSetup}}
+    if(!/^\d{6}$/.test(code)||!setup||setup.expires<now)fail(401,'That phone setup code is invalid or expired');
     delete u.phoneSetup;const sid=token(),csrf=token();db.prepare('DELETE FROM sessions WHERE expires<?').run(now);db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;state.audit.push({id:token().slice(0,24),actor:u.id,at:new Date().toISOString(),path,action:'management_phone_setup_code_used'});save();send(200,{user:publicUser(u),csrf,mustAddPasskey:true});return;
    }
    if(path==='/api/contractor-applications'&&req.method==='POST'){
