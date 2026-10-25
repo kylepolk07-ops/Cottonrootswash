@@ -314,22 +314,20 @@ function login() {
   button(c,app==="customer"?"Create a Customer account":"Apply as a Washing Specialist",app==="customer"?customerRegistration:contractorApplication,true);
   const chooser=node("a","← Choose what you want to do",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
 }
-function termChecks(parent,terms){
- parent.append(node("h3","Required agreements"),node("p","Read and check every item. These launch-draft terms should be reviewed by your attorney before public launch.",{class:"note"}));
- return terms.map(([id,text])=>[id,check(parent,text)]);
-}
-function customerAgreement(parent){
- parent.append(node("h3","Customer terms and disclosures"),node("p","Scroll through the complete agreement. The acceptance box unlocks when you reach the bottom.",{class:"note"}));
- const terms=node("div",undefined,{class:"agreement-scroll",tabindex:"0","aria-label":"Customer terms and disclosures"});
- terms.append(node("h3","Cotton Roots & Company Wash & Fold — Customer Agreement"));
- customerTerms.forEach(([,text],index)=>terms.append(node("p",`${index+1}. ${text}`)));
+function scrollAgreement(parent,{heading,title,items,acceptance,extra=[]}){
+ parent.append(node("h3",heading),node("p","Scroll through the complete agreement. The acceptance box unlocks when you reach the bottom.",{class:"note"}));
+ const terms=node("div",undefined,{class:"agreement-scroll",tabindex:"0","aria-label":heading});
+ terms.append(node("h3",title));
+ [...items,...extra].forEach((item,index)=>terms.append(node("p",`${index+1}. ${Array.isArray(item)?item[1]:item}`)));
  parent.append(terms);
  const reached=node("p","Scroll to the bottom to continue.",{class:"agreement-progress",role:"status"});parent.append(reached);
- const accepted=check(parent,"I have reviewed and agree to the complete Customer Terms and Disclosures shown above.");accepted.disabled=true;
+ const accepted=check(parent,acceptance);accepted.disabled=true;
  const update=()=>{if(terms.scrollTop+terms.clientHeight>=terms.scrollHeight-8){accepted.disabled=false;reached.textContent="Terms reviewed. You may now accept the agreement.";terms.removeEventListener("scroll",update)}};
  terms.addEventListener("scroll",update,{passive:true});queueMicrotask(update);
  return accepted;
 }
+const customerAgreement=parent=>scrollAgreement(parent,{heading:"Customer terms and disclosures",title:"Cotton Roots & Company Wash & Fold — Customer Agreement",items:customerTerms,acceptance:"I have reviewed and agree to the complete Customer Terms and Disclosures shown above."});
+const contractorAgreement=parent=>scrollAgreement(parent,{heading:"Washing Specialist agreement",title:"Cotton Roots & Company — Independent Washing Specialist Agreement",items:contractorTerms,extra:["I understand this is an application. I cannot accept laundry jobs until required tax, identity, and payout onboarding is complete and Management finishes the phone call and in-person shop meeting."],acceptance:"I have reviewed and agree to the complete Washing Specialist Agreement and application requirements shown above."});
 function customerRegistration(){
  reset();const c=card("👤","Create a Customer account","Complete every field and agreement. Customer accounts activate automatically after successful registration.");
  const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),referralCode=field(c,"Friend’s referral username (optional)","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
@@ -342,8 +340,8 @@ function contractorApplication(){
   const name=field(c,"Full name","text"),phone=field(c,"Phone number","tel"),email=field(c,"Email","email"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
   username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";
   c.append(node("p","Password must be at least 8 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
-  const terms=termChecks(c,contractorTerms),approval=check(c,"I understand this is an application and I cannot accept jobs until Management completes the phone call and in-person shop meeting.");
-  button(c,"Submit Washing Specialist application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!approval.checked||!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
+  const accepted=contractorAgreement(c);
+  button(c,"Submit Washing Specialist application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Washing Specialist Agreement before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:contractorTerms.map(([id])=>id)});login();message("Application submitted. Sign in to complete payout setup and follow your approval status.")});
   button(c,"Back to sign in",login,true);
 }
 async function render() {
