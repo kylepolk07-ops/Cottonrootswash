@@ -318,7 +318,7 @@ function login() {
 function scrollAgreement(parent,{heading,title,items,acceptance,extra=[]}){
  parent.append(node("h3",heading),node("p","Scroll through the complete agreement. The acceptance box unlocks when you reach the bottom.",{class:"note"}));
  const terms=node("div",undefined,{class:"agreement-scroll",tabindex:"0","aria-label":heading});
- terms.append(node("h3",title));
+ const brand=node("div",undefined,{class:"agreement-brand"});brand.append(node("img",undefined,{src:"/web/brand-mark.png",alt:"Cotton Roots & Company logo"}),node("strong","COTTON ROOTS & COMPANY"),node("span","WASH & FOLD"));terms.append(brand,node("h3",title));
  [...items,...extra].forEach((item,index)=>terms.append(node("p",`${index+1}. ${Array.isArray(item)?item[1]:item}`)));
  parent.append(terms);
  const reached=node("p","Scroll to the bottom to continue.",{class:"agreement-progress",role:"status"});parent.append(reached);
@@ -485,13 +485,13 @@ function agreement() {
   const customer = user.role === "customer";
   const c = card(
     "📜",
-    customer ? "Customer pilot agreement" : "Washing specialist pilot agreement",
-    "Read and accept every condition before continuing. This private-pilot draft must receive Texas legal review before public launch.",
+    customer ? "Customer agreement" : "Washing Specialist agreement",
+    "Scroll through the complete agreement, then use the one acceptance box at the bottom.",
   );
-  const terms=customer?customerTerms:contractorTerms,checks=terms.map(([,text]) => check(c, text));
+  const terms=customer?customerTerms:contractorTerms,accepted=customer?customerAgreement(c):contractorAgreement(c);
   button(c, "Agree and continue", async () => {
-    if (!checks.every((item) => item.checked))
-      throw Error("Check every agreement condition before continuing.");
+    if (accepted.disabled || !accepted.checked)
+      throw Error("Scroll through the complete agreement and check the one acceptance box before continuing.");
     const result = await api("/api/agreements/accept", {
       version: agreementVersion,
       accepted: true,
@@ -1827,7 +1827,7 @@ function bagInventory(data) {
 }
 function createPilotLogin(role) {
   main.replaceChildren();
-  const c = card(role === "customer" ? "👤" : "🧺", role === "customer" ? "Add customer login" : "Add Washing Specialist login", "They must accept every agreement condition on first sign-in.");
+  const c = card(role === "customer" ? "👤" : "🧺", role === "customer" ? "Add customer login" : "Add Washing Specialist login", "On first sign-in, they scroll through one complete agreement and use one acceptance checkbox.");
   const username = field(c, "Username", "text"), password = field(c, "Temporary password", "password");
   username.placeholder = "example: jordan-test"; password.placeholder = "At least 8 characters";
   button(c, "Create login", async () => {
