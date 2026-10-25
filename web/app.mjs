@@ -418,10 +418,10 @@ async function render() {
     const {orders=[]}=await api("/api/orders");let unread=0;
     if(user.role==="customer"){
       const updates=[];
-      for(const order of orders)for(const [at,title] of [[order.picked_up_at,"Laundry collected"],[order.paid_at,"Payment confirmed"],[order.returned_at||order.delivered_at,"Laundry returned"],[order.wash_completed_at,"Washing completed"],[order.checked_out_at,"Picked up for washing"],[order.dropped_at,"Checked in at the shop"]])if(at)updates.push(`customer:${order.id}:${title}:${at}`);
+      for(const order of orders)for(const [at,title] of [[order.paid_at,"Laundry ready for pickup"],[order.dropped_at,"Bag dropped off"]])if(at)updates.push(`customer:${order.id}:${title}:${at}`);
       unread=updates.filter(id=>!user.notificationAcks?.includes(id)).length+(!user.paymentMethodReady?1:0);
     }else if(user.role==="contractor"){
-      unread=orders.filter(order=>order.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(order.status)&&!user.notificationAcks?.includes(`job:${order.id}:${order.status}:${order.due_at||''}`)).length;
+      unread=orders.filter(order=>order.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(order.status)).length+orders.filter(order=>!order.assigned_contractor_id&&['at_shop','offered'].includes(order.status)).length;
       if(paymentPreview?.connect&&!user.payoutOnboardingComplete)unread++;
     }
     if(unread)alertButton.append(node("span",unread>9?"9+":String(unread),{class:"alert-badge","aria-label":`${unread} unread alerts`}));
@@ -584,18 +584,16 @@ async function customerAlerts(){
  const response=await api("/api/orders"),events=[];
  const add=(order,at,title,text)=>{if(at)events.push({order,at,title,text})};
  for(const order of response.orders){
-  add(order,order.picked_up_at,"Laundry collected",`Bag ${order.bag_id} was collected. This order is complete.`);
-  add(order,order.paid_at,"Payment confirmed",order.service==="full_service"?`Payment for bag ${order.bag_id} is confirmed. Confirm receipt in My laundry.`:`Bag ${order.bag_id} is paid and ready for pickup at Cotton Roots & Company.`);
-  add(order,order.returned_at||order.delivered_at,"Laundry returned",order.service==="full_service"?`Bag ${order.bag_id} was delivered. Payment is ready in My laundry.`:`Bag ${order.bag_id} was returned to the shop. Payment is ready in My laundry.`);
-  add(order,order.wash_completed_at,"Washing completed",`Bag ${order.bag_id} is clean and folded. It is being returned next.`);
-  add(order,order.checked_out_at,"Picked up for washing",`Bag ${order.bag_id} was checked out to your washing specialist.`);
-  add(order,order.dropped_at,"Checked in at the shop",`Bag ${order.bag_id} was confirmed at Cotton Roots & Company.`);
+  add(order,order.paid_at,"Laundry ready for pickup",order.service==="full_service"?`Bag ${order.bag_id} has been returned. Confirm delivery in My laundry.`:`Bag ${order.bag_id} is ready for pickup at Cotton Roots & Company.`);
+  add(order,order.dropped_at,"Bag dropped off",`Bag ${order.bag_id} was checked in at Cotton Roots & Company.`);
  }
  events.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
- const c=card("🔔","Notifications","Status changes appear here whenever you open or refresh the app.");
+ const unseen=events.map(event=>`customer:${event.order.id}:${event.title}:${event.at}`).filter(id=>!user.notificationAcks?.includes(id));
+ if(unseen.length){await Promise.all(unseen.map(id=>api("/api/notifications/ack",{id})));user.notificationAcks=[...(user.notificationAcks||[]),...unseen]}
+ const c=card("🔔","Notifications","You will see an update when your bag is dropped off and when your laundry is ready for pickup.");
  button(c,"Refresh notifications",()=>route("alerts"),true);
  if(!events.length)c.append(node("p","No laundry notifications yet.",{class:"muted"}));
- for(const event of events){const id=`customer:${event.order.id}:${event.title}:${event.at}`,seen=user.notificationAcks?.includes(id),item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));if(seen)item.append(node("span","Acknowledged",{class:"pill"}));else button(item,"I acknowledge this update",async()=>{await api("/api/notifications/ack",{id});const me=await api("/api/me");user=me.user;await route("alerts");message("Update acknowledged.")},true);c.append(item)}
+ for(const event of events){const item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));c.append(item)}
  const push=card("📲","Phone alerts","This installable web app can support phone push notifications without an App Store app. Background push setup and customer permission will be added with the notification service; for now, alerts update inside Cotton Roots when it opens.");
  push.append(node("p","Text messages can remain the backup notification method after registration is approved.",{class:"note"}));
 }
@@ -607,11 +605,13 @@ async function actionCenter(){
   return customerAlerts();
  }
  const [{orders=[]},onboarding]=await Promise.all([api("/api/orders"),api("/api/contractor-onboarding")]);
- const c=card("🔔","Action Center","Required items and laundry deadlines appear here. Open each item and acknowledge that you have seen it.");
+ const c=card("🔔","Action Center","Available work, required setup, and current job deadlines appear here automatically.");
  if(onboarding.enabled&&!onboarding.status.complete){const item=node("div",undefined,{class:"notification-item"});item.append(node("strong","Required: tax, identity, and payout setup"),node("p","Complete your W-9, government identity check, and bank connection. You cannot be approved or accept work until Stripe verifies everything."));c.append(item);button(item,onboarding.status.started?"Continue secure setup":"Start secure setup",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)})}
  const active=orders.filter(order=>order.assigned_contractor_id===user.id&&!['picked_up','cancelled'].includes(order.status));
- for(const order of active){const id=`job:${order.id}:${order.status}:${order.due_at||''}`,seen=user.notificationAcks?.includes(id),item=node("div",undefined,{class:"notification-item"});item.append(node("strong",order.deadline_alert?.state==="overdue"?"Laundry is overdue":"Laundry job needs attention"),node("p",`Bag ${order.bag_id||"pending"} · ${statusLabels[order.status]||order.status}${order.due_at?` · due ${new Date(order.due_at).toLocaleString()}`:""}`));if(seen)item.append(node("span","Acknowledged",{class:"pill"}));else button(item,"I acknowledge this update",async()=>{await api("/api/notifications/ack",{id});const me=await api("/api/me");user=me.user;await route("alerts");message("Update acknowledged.")},true);c.append(item)}
- if(!active.length&&(!onboarding.enabled||onboarding.status.complete))c.append(node("p","You have no required actions right now.",{class:"muted"}));
+ const offers=orders.filter(order=>!order.assigned_contractor_id&&['at_shop','offered'].includes(order.status));
+ if(offers.length){const item=node("div",undefined,{class:"notification-item"});item.append(node("strong",`${offers.length} available ${offers.length===1?'job':'jobs'}`),node("p","Open Offers to review available laundry work."));button(item,"View offers",()=>route("offers"),true);c.append(item)}
+ for(const order of active){const item=node("div",undefined,{class:"notification-item"});item.append(node("strong",order.deadline_alert?.state==="overdue"?"Laundry is overdue":"Current laundry job"),node("p",`Bag ${order.bag_id||"pending"} · ${statusLabels[order.status]||order.status}${order.due_at?` · due ${new Date(order.due_at).toLocaleString()}`:""}`));c.append(item)}
+ if(!active.length&&!offers.length&&(!onboarding.enabled||onboarding.status.complete))c.append(node("p","You have no required actions right now.",{class:"muted"}));
  button(c,"Refresh Action Center",()=>route("alerts"),true);
 }
 async function customerRewards(){
