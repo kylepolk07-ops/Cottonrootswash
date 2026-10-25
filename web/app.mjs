@@ -789,15 +789,10 @@ async function orders() {
             ),
         );
       if (o.status === "washing") {
-        const next = !o.wash_completed_at
-          ? "wash_complete"
-          : !o.return_bag_scanned_at
-            ? "return_bag"
-            : "wall_checkin";
+        const next = !o.return_bag_scanned_at ? "return_bag" : "wall_checkin";
         button(
           c,
           {
-            wash_complete: "Laundry is clean",
             return_bag: o.service==="full_service"?"Scan bag at customer return":"Scan bag on return",
             wall_checkin: "Check in at shop",
           }[next],

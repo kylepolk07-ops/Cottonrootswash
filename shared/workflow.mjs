@@ -33,13 +33,13 @@ export function transition(order,action,ctx={}){
       requireIt(o.status===ORDER_STATUS.WASHING && ctx.actorId===o.assigned_contractor_id,'Assigned contractor must finish washing');
       o.wash_completed_at=at;break;
     case ACTION.RETURN_BAG:
-      requireIt(o.status===ORDER_STATUS.WASHING && o.wash_completed_at,'Washing must be finished first');
+      requireIt(o.status===ORDER_STATUS.WASHING,'Laundry must be checked out before return');
       requireIt(ctx.actorId===o.assigned_contractor_id && ctx.bagVerified===true,'Assigned contractor must scan correct bag');
-      o.return_bag_scanned_at=at;if(o.service==='full_service'){o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;o.delivered_at=at;}break;
+      o.return_bag_scanned_at=at;if(o.service==='full_service'){o.wash_completed_at=at;o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;o.delivered_at=at;}break;
     case ACTION.CHECK_IN:
       requireIt(o.status===ORDER_STATUS.WASHING && o.return_bag_scanned_at,'Scan returned bag first');
       requireIt(ctx.actorId===o.assigned_contractor_id && ctx.shopConfirmed===true,'Assigned contractor must confirm shop check-in');
-      o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;break;
+      o.wash_completed_at=at;o.status=ORDER_STATUS.PAYMENT_PENDING;o.returned_at=at;break;
     case ACTION.PAYMENT:
       requireIt(o.status===ORDER_STATUS.PAYMENT_PENDING,'Order not awaiting payment');
       {const eventId=ctx.paymentEventId||ctx.squareEventId;

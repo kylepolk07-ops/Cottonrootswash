@@ -23,13 +23,13 @@ test('weight rounds upward and checkout requires weight, right contractor, and s
  assert.throws(()=>transition(weighed,ACTION.CHECK_OUT,actor));
  assert.equal(transition(weighed,ACTION.CHECK_OUT,{...actor,shopConfirmed:true}).status,ORDER_STATUS.WASHING);
 });
-test('return requires wash completion, bag scan, then shop confirmation; Square cannot be spoofed',()=>{
+test('return bag and shop check-in confirm clean laundry; Square cannot be spoofed',()=>{
  let o=transition(transition(throughAccepted(),ACTION.WEIGH,{...actor,bagVerified:true,measuredPounds:8.3}),ACTION.CHECK_OUT,{...actor,shopConfirmed:true});
  assert.throws(()=>transition(o,ACTION.CHECK_IN,{...actor,shopConfirmed:true}));
- o=transition(o,ACTION.WASH_COMPLETE,actor);
  o=transition(o,ACTION.RETURN_BAG,{...actor,bagVerified:true});
  assert.throws(()=>transition(o,ACTION.CHECK_IN,actor));
  o=transition(o,ACTION.CHECK_IN,{...actor,shopConfirmed:true});
+ assert.ok(o.wash_completed_at);
  assert.equal(o.status,ORDER_STATUS.PAYMENT_PENDING);
  assert.throws(()=>transition(o,ACTION.PAYMENT,{squareEventId:'fake',verifiedServerWebhook:false}));
  o=transition(o,ACTION.PAYMENT,{squareEventId:'evt1',verifiedServerWebhook:true});
