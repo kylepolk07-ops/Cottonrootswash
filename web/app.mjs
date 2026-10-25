@@ -669,7 +669,10 @@ async function orders() {
       ? "Updates are shared securely with the shop. Payment and pickup are separate steps."
       : "Accept only when you can meet the displayed deadline. Scan the bag and shop station at each required visit.",
   );
-  if(app==="customer")button(intro,"Create a new laundry order",()=>route("book"));
+  const currentOrders=app==="customer"?orders.filter(order=>!["picked_up","cancelled"].includes(order.status)):[];
+  if(app==="customer"&&!user.paymentMethodReady){intro.append(node("p","Verify your payment method before starting laundry.",{class:"note"}));button(intro,"Verify payment in Action Center",()=>route("alerts"))}
+  else if(app==="customer"&&currentOrders.length){const unpaid=currentOrders.some(order=>["payment_pending","paid_hold"].includes(order.status)&&!order.payment_verified);intro.append(node("p",unpaid?"Securely pay the current order before starting another laundry load.":"Finish the current laundry order before starting another one.",{class:"note"}))}
+  else if(app==="customer")button(intro,"Create a new laundry order",()=>route("book"));
   if(app==="contractor"&&page!=="offers")contractorReminders(orders);
   const filterBox = node("div", undefined, { class: "filter" });
   main.append(filterBox);
@@ -681,7 +684,7 @@ async function orders() {
   const showing=node("p",undefined,{class:"note"});
   filterBox.append(showing);
   button(filterBox,"Refresh status",()=>route(page),true);
-  if(historyMode)button(filterBox,app==="customer"?"View older laundry":"View older jobs",()=>{filter.value=filter.value==="active"?"complete":"active";applyFilter();},true);
+  const historyButton=historyMode?button(filterBox,app==="customer"?"Review old orders":"View older jobs",()=>{filter.value=filter.value==="active"?"complete":"active";applyFilter();},true):null;
   if (app === "contractor") {
     const help = button(
       filterBox,
@@ -707,11 +710,12 @@ async function orders() {
           o.payment_verified &&
           o.ready_for_pickup) ||
         (key === "complete" &&
-          (app === "customer" ? o.status === "picked_up" : !!o.returned_at))
+          (app === "customer" ? ["picked_up","cancelled"].includes(o.status) : !!o.returned_at))
       );
       if(!c.hidden)visibleCount++;
     }
     showing.textContent=`Showing: ${filter.selectedOptions[0]?.textContent||"All"} · ${visibleCount} order${visibleCount===1?"":"s"}`;
+    if(historyButton&&app==="customer")historyButton.textContent=filter.value==="active"?"Review old orders":"Back to current laundry";
   }
   filter.addEventListener("change",applyFilter);
   if (!orders.length)
