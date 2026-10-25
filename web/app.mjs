@@ -253,7 +253,7 @@ function login() {
     "Welcome back",
     app === "customer"
       ? "Sign in with your saved Customer username and password."
-      : "Sign in with your Contractor username and password. Owners use their Management login here.",
+      : "Sign in with your Washing Specialist username and password. Owners use their Management login here.",
   );
   const f = node("form");
   c.append(f);
@@ -293,7 +293,8 @@ function login() {
       user = me.user;
       if(rememberLogin.checked){try{localStorage.setItem(rememberedIdentityKey,JSON.stringify({role:user.role==="customer"?"customer":"contractor",username:user.username}))}catch{}}
       else {try{localStorage.removeItem(rememberedIdentityKey)}catch{}}
-      if (me.staging?.disposable)
+      if(me.staging?.synthetic===false)document.querySelector(".staging").textContent="Secure live service · real customer payments enabled";
+      else if (me.staging?.disposable)
         document.querySelector(".staging").textContent =
           "Private preview · practice data only · no real payments or documents";
       await render();
@@ -304,8 +305,8 @@ function login() {
       submit.disabled = false;
     }
   });
-  button(c,app==="customer"?"Register as a customer":"Register as a contractor",app==="customer"?customerRegistration:contractorApplication,true);
-  const chooser=node("a","← Choose Customer or Contractor",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
+  button(c,app==="customer"?"Create a Customer account":"Apply as a Washing Specialist",app==="customer"?customerRegistration:contractorApplication,true);
+  const chooser=node("a","← Choose what you want to do",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
 }
 function termChecks(parent,terms){
  parent.append(node("h3","Required agreements"),node("p","Read and check every item. These launch-draft terms should be reviewed by your attorney before public launch.",{class:"note"}));
@@ -336,7 +337,7 @@ function contractorApplication(){
   username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";
   c.append(node("p","Password must be at least 12 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
   const terms=termChecks(c,contractorTerms),approval=check(c,"I understand this is an application and I cannot accept jobs until Management completes the phone call and in-person shop meeting.");
-  button(c,"Submit contractor application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!approval.checked||!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
+  button(c,"Submit Washing Specialist application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!approval.checked||!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
   button(c,"Back to sign in",login,true);
 }
 async function render() {
@@ -407,7 +408,7 @@ async function render() {
   const account = node("div", undefined, { class: "account-action" });
   document.querySelector("header").append(account);
   const identity=node("div",undefined,{class:"signed-in-as"});
-  identity.append(node("small","SIGNED IN AS"),node("strong",user.displayName||user.username),node("span",user.role==="contractor"?"Contractor":user.role==="customer"?"Customer":"Management"));
+  identity.append(node("small","SIGNED IN AS"),node("strong",user.displayName||user.username),node("span",user.role==="contractor"?"Washing Specialist":user.role==="customer"?"Customer":"Management"));
   account.append(identity);
   button(
     account,
@@ -437,8 +438,8 @@ async function render() {
   ) {
     card(
       "🌱",
-      "Contractor account needed",
-      "Sign out and use the Contractor or owner sign-in.",
+      "Washing Specialist account needed",
+      "Sign out and use the Washing Specialist or Management sign-in.",
     );
     return;
   }
@@ -507,7 +508,7 @@ const statusLabels = {
   cancelled: "Cancelled",
 };
 function summary(c, o) {
-  const deliveryStatus=o.service==="full_service"?{offered:"Waiting for contractor",accepted:"Pickup accepted",washing:"Picked up · being washed",payment_pending:"Delivered · payment pending",paid_ready:"Paid · confirm delivery",picked_up:"Delivery confirmed"}[o.status]:null;
+  const deliveryStatus=o.service==="full_service"?{offered:"Waiting for a Washing Specialist",accepted:"Pickup accepted",washing:"Picked up · being washed",payment_pending:"Delivered · payment pending",paid_ready:"Paid · confirm delivery",picked_up:"Delivery confirmed"}[o.status]:null;
   c.append(
     node("span", deliveryStatus||statusLabels[o.status] || "Status update", { class: "pill" }),
   );
@@ -552,7 +553,7 @@ function summary(c, o) {
       node(
         "p",
         o.rush_approved
-          ? "Rush order · contractor earns an extra $0.75/lb"
+          ? "Rush order · Washing Specialist earns an extra $0.75/lb"
           : "Rush requested",
         { class: "pill" },
       ),
@@ -708,7 +709,7 @@ async function orders() {
     if (app === "customer") {
       if (o.status === "awaiting_dropoff")
         button(c, "Drop off this bag", () => actionWizard(o, "drop_off"));
-      if(o.service==="full_service"&&o.status==="offered")c.append(node("p","Your delivery request is available to approved contractors. We will update this screen when one accepts it.",{class:"note"}));
+      if(o.service==="full_service"&&o.status==="offered")c.append(node("p","Your delivery request is available to approved Washing Specialists. We will update this screen when one accepts it.",{class:"note"}));
       if (o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup)
         c.append(node("p",o.service==="full_service"?"Your delivered laundry is paid. Scan the QR on the bag to confirm that you received the correct order.":"Your laundry is paid and ready. Pick it up at the shop, then scan the QR on your bag to complete pickup.",{class:"note"}));
       if (o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup)
@@ -831,7 +832,7 @@ async function actionWizard(o, action) {
     const meta={
       drop_off:{heading:"DIRTY LAUNDRY · SHOP DROP-OFF",action:"I am dropping off this dirty bag at Cotton Roots & Company",condition:"DIRTY — ready for washing"},
       record_weight:{heading:"DIRTY LAUNDRY · CONTRACTOR PICKUP",action:"I am picking up this dirty bag from Cotton Roots & Company",condition:"DIRTY — leaving the shop for washing"},
-      wall_checkout:{heading:"DIRTY LAUNDRY · CUSTOMER PICKUP",action:"I am picking up this dirty bag from the customer",condition:"DIRTY — contractor taking custody"},
+      wall_checkout:{heading:"DIRTY LAUNDRY · CUSTOMER PICKUP",action:"I am picking up this dirty bag from the customer",condition:"DIRTY — Washing Specialist taking custody"},
       return_bag:{heading:"CLEAN LAUNDRY · RETURN",action:o.service==="full_service"?"I am delivering this clean bag to the customer":"I am dropping off this clean bag at Cotton Roots & Company",condition:"CLEAN — washed, dried, and folded"},
       customer_pickup:{heading:"CLEAN LAUNDRY · CUSTOMER PICKUP",action:o.service==="full_service"?"I am confirming delivery of this clean bag":"I am picking up this clean bag from Cotton Roots & Company",condition:"CLEAN — correct customer pickup"},
       staff_release:{heading:"CLEAN LAUNDRY · PAID PICKUP AREA",action:"I am moving this clean, paid bag to the pickup area",condition:"CLEAN — payment verified"},
@@ -1052,7 +1053,7 @@ async function book() {
         });
         await route("orders");
         message(
-          service==="full_service"?`Delivery order booked. Round-trip distance: ${Number(booked.order.delivery_miles).toFixed(1)} miles. Approved contractors can now review it.`:"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
+          service==="full_service"?`Delivery order booked. Round-trip distance: ${Number(booked.order.delivery_miles).toFixed(1)} miles. Approved Washing Specialists can now review it.`:"Order booked. Next, bring your bag to the shop and choose Drop off this bag.",
         );
       });
       button(review, "Start again", () => route("book"), true);
@@ -1074,7 +1075,7 @@ async function profile() {
   if(!complete)return showEditor();
   const c=card("👤","My account",user.profileVerifiedAt?"Your contact information is complete and verified by you.":"Review everything below, then verify that it is correct.");
   c.append(node("span",user.profileVerifiedAt?"✓ Verified":"Needs verification",{class:"pill"}));
-  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Contractor"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Text updates",user.smsConsent?"On":"Off"],["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
+  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Washing Specialist"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Text updates",user.smsConsent?"On":"Off"],["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
   if(user.profileVerifiedAt)c.append(node("p",`Verified ${new Date(user.profileVerifiedAt).toLocaleString()}`,{class:"note"}));
   else button(c,"Verify my information",async()=>{const result=await api("/api/profile",{action:"verify"});user=result.user;await route("profile");message("Your information is verified.")});
   button(c,"Edit information",showEditor,true);
@@ -1249,7 +1250,7 @@ async function earnings() {
   card(
     "🌱",
     "Your earnings",
-    `Contractor rate: $${Number(pricingPreview?.contractor??1).toFixed(2)} per pound for newly booked jobs. Pickup-and-return jobs add $0.25 per pound. Rush jobs add $0.75 per pound. Owner mileage or other adjustments appear below. Payout integration is disabled; no funds move here.`,
+    `Washing Specialist rate: $${Number(pricingPreview?.contractor??1).toFixed(2)} per pound for newly booked jobs. Pickup-and-return jobs add $0.25 per pound. Rush jobs add $0.75 per pound. Owner mileage or other adjustments appear below.`,
   );
   const totals = node("div", undefined, { class: "stat-grid" });
   main.append(totals);
@@ -1274,7 +1275,7 @@ async function earnings() {
     if(e.delivery_bonus)c.append(node("p",`Delivery bonus: $${Number(e.delivery_bonus).toFixed(2)} ($0.25 per lb)`,{class:"note"}));
     if(e.rush_bonus)c.append(node("p",`Rush bonus: $${Number(e.rush_bonus).toFixed(2)} ($0.75 per lb)`,{class:"note"}));
     for(const item of e.adjustment_details||[])c.append(node("p",`${item.reason}: ${Number(item.amount)<0?"−":"+"}$${Math.abs(Number(item.amount)).toFixed(2)}`,{class:"muted"}));
-    c.append(node("p",`Total contractor pay: $${Number(e.amount).toFixed(2)}`,{class:"price"}),node("span",{waiting_for_customer_payment:"Waiting for customer payment",clearing:"24-hour clearing",ready:"Ready for payout",paid:"Paid"}[e.status]||e.status,{class:"pill"}));
+    c.append(node("p",`Total Washing Specialist pay: $${Number(e.amount).toFixed(2)}`,{class:"price"}),node("span",{waiting_for_customer_payment:"Waiting for customer payment",clearing:"24-hour clearing",ready:"Ready for payout",paid:"Paid"}[e.status]||e.status,{class:"pill"}));
   }
 }
 async function management() {
@@ -1315,7 +1316,7 @@ async function management() {
     );
     const role = select(create, "App", [
       ["customer", "Customer"],
-      ["contractor", "Contractor"],
+      ["contractor", "Washing Specialist"],
     ]);
     const username = field(create, "Username", "text");
     username.placeholder = "example: jordan-test";
@@ -1332,7 +1333,7 @@ async function management() {
       const done = card(
         "✓",
         "Pilot login created",
-        `Give this to ${result.user.username} privately. They sign in through the ${result.user.role === "customer" ? "Customer" : "Contractor"} app.`,
+        `Give this to ${result.user.username} privately. They sign in through the ${result.user.role === "customer" ? "Customer" : "Washing Specialist"} area.`,
       );
       const login = node("div", undefined, { class: "bag-card" });
       login.append(
@@ -1343,7 +1344,7 @@ async function management() {
         login,
         node(
           "p",
-          "This password is shown once. Contractors still need Management approval before accepting jobs.",
+          "This password is shown once. Washing Specialists still need Management approval before accepting jobs.",
           { class: "note" },
         ),
       );
@@ -1402,12 +1403,12 @@ function managementWorkspace(data) {
   const c = card(
     "⚙️",
     "Management",
-    "Choose one area. Customers, contractors, bags, and money each have their own workspace.",
+    "Choose one area. Customers, Washing Specialists, bags, and money each have their own workspace.",
   );
   const stats = node("div", undefined, { class: "stat-grid" });
   c.append(stats);
   stat(stats, (data.users || []).filter((u) => u.role === "customer").length, "Customers");
-  stat(stats, (data.users || []).filter((u) => u.role === "contractor").length, "Contractors");
+  stat(stats, (data.users || []).filter((u) => u.role === "contractor").length, "Washing Specialists");
   stat(stats, (data.bags || []).filter((b) => b.exchange_requested_at).length, "Bag exchanges");
   stat(stats, (data.orders || []).filter((o) => o.status === "paid_ready" && o.payment_verified && o.ready_for_pickup).length, "Ready for pickup");
   stat(stats, (data.orders || []).filter((o) => o.deadline_alert).length, "Late alerts");
@@ -1416,14 +1417,14 @@ function managementWorkspace(data) {
   c.append(choices);
   for (const [key, icon, title, description] of [
     ["customers", "👤", "Customers", "Accounts, contact details, and assigned bags"],
-    ["contractors", "🧺", "Contractor applications", "Review applicants, approvals, access, availability, and jobs"],
+    ["contractors", "🧺", "Washing Specialist applications", "Review applicants, approvals, access, availability, and jobs"],
     ["bags", "🛍", "Bag inventory", "Available, assigned, exchange, and retired bags"],
-    ["money", "💵", "Money", "Payment status and contractor amounts due"],
+    ["money", "💵", "Money", "Payment status and Washing Specialist amounts due"],
     ["orders", "📦", "Orders", "Ready for pickup and completed orders"],
     ["alerts", "⏰", "Late alerts", "Due within 6 hours and overdue work"],
     ["complaints", "💬", "Customer complaints", "Review and resolve customer reports"],
     ["notifications", "📱", "Text notifications", "Queued, sent, skipped, and failed order texts"],
-    ["pricing", "🏷", "Pricing", "Customer rates, bag price, and contractor pay"],
+    ["pricing", "🏷", "Pricing", "Customer rates, bag price, and Washing Specialist pay"],
     ["tools", "🧪", "Pilot tools", "Synthetic QR and station test codes"],
   ])
     choice(choices, icon, title, description, () => {
@@ -1440,16 +1441,16 @@ function managementPricing(data){
   const prices=data.pricing||{dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
   c.append(node("p","Pickup & return distance pricing: first 5 round-trip miles from 307 Locust Street to the customer and back are free, then $1.00 per additional mile.",{class:"note"}));
   if(!data.pricingPinSet){c.append(node("p","Create a separate six-digit PIN. You will enter it every time pricing changes.",{class:"note"}));const pin=field(c,"New six-digit pricing PIN","password"),confirmPin=field(c,"Enter the PIN again","password");for(const input of [pin,confirmPin]){input.inputMode="numeric";input.maxLength=6;input.pattern="[0-9]{6}"}button(c,"Set pricing PIN",async()=>{await api("/api/management/pricing",{action:"set_pin",pin:pin.value,confirmPin:confirmPin.value});await route("management");message("Pricing PIN created. Open Pricing again to make changes.")});return}
-  const inputs={};for(const [key,label] of [["dropoff","Customer drop-off price per lb"],["full_service","Customer pickup & return price per lb"],["rushPerLb","Rush addition per lb"],["extraBag","Extra or replacement bag price"],["contractor","Contractor pay per approved lb"]]){inputs[key]=field(c,label,"number",Number(prices[key]).toFixed(2));inputs[key].min="0";inputs[key].max="100";inputs[key].step="0.01"}
+  const inputs={};for(const [key,label] of [["dropoff","Customer drop-off price per lb"],["full_service","Customer pickup & return price per lb"],["rushPerLb","Rush addition per lb"],["extraBag","Extra or replacement bag price"],["contractor","Washing Specialist pay per approved lb"]]){inputs[key]=field(c,label,"number",Number(prices[key]).toFixed(2));inputs[key].min="0";inputs[key].max="100";inputs[key].step="0.01"}
   const pin=field(c,"Confirm with six-digit pricing PIN","password");pin.inputMode="numeric";pin.maxLength=6;pin.pattern="[0-9]{6}";
   button(c,"Confirm and publish pricing",async()=>{const body={pin:pin.value};for(const [key,input] of Object.entries(inputs))body[key]=Number(input.value);const result=await api("/api/management/pricing",body);pricingPreview=result.pricing;managementView="home";await route("management");message(`Pricing published effective ${new Date(result.effectiveAt).toLocaleString()}.`) });
-  if((data.pricingHistory||[]).length){c.append(node("h3","Pricing history"));for(const item of data.pricingHistory)c.append(node("p",`${new Date(item.effective_at).toLocaleString()} · Drop-off $${Number(item.pricing.dropoff).toFixed(2)}/lb · Contractor $${Number(item.pricing.contractor).toFixed(2)}/lb`,{class:"note"}))}
+  if((data.pricingHistory||[]).length){c.append(node("h3","Pricing history"));for(const item of data.pricingHistory)c.append(node("p",`${new Date(item.effective_at).toLocaleString()} · Drop-off $${Number(item.pricing.dropoff).toFixed(2)}/lb · Washing Specialist $${Number(item.pricing.contractor).toFixed(2)}/lb`,{class:"note"}))}
 }
 function managementOrders(data) {
   const selected=managementOrderId&&(data.orders||[]).find(order=>order.id===managementOrderId);
   if(selected)return managementOrderDetail(data,selected);
   const c=card("📦","Orders","Scan the list, then open an order to see its complete history and actions.");managementBack(c);
-  const wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Order","Status","Customer","Contractor","Service","Due","Amount","Details"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
+  const wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Order","Status","Customer","Washing Specialist","Service","Due","Amount","Details"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
   const orders=[...(data.orders||[])].sort((a,b)=>{const aDone=["picked_up","cancelled"].includes(a.status),bDone=["picked_up","cancelled"].includes(b.status);return Number(aDone)-Number(bDone)||Date.parse(b.created_at||0)-Date.parse(a.created_at||0)});
   for(const order of orders){const customer=(data.users||[]).find(person=>person.id===order.customer_id),contractor=(data.users||[]).find(person=>person.id===order.assigned_contractor_id),row=node("tr");for(const value of [order.id,statusLabels[order.status]||order.status,customer?.displayName||customer?.username||"Unknown",contractor?.displayName||contractor?.username||"Not assigned",order.service==="full_service"?"Delivery":"Drop off",order.due_at?new Date(order.due_at).toLocaleString():"Not set",order.total===undefined?"—":`$${Number(order.total).toFixed(2)}`])row.append(node("td",value));const action=node("td");button(action,"Open",()=>{managementOrderId=order.id;route("management")},true);row.append(action);body.append(row)}
   if(!orders.length){const row=node("tr"),empty=node("td","No orders yet.");empty.colSpan=8;row.append(empty);body.append(row)}table.append(body);wrap.append(table);c.append(wrap);
@@ -1457,7 +1458,7 @@ function managementOrders(data) {
 function managementOrderDetail(data,order){
   const customer=(data.users||[]).find(person=>person.id===order.customer_id),contractor=(data.users||[]).find(person=>person.id===order.assigned_contractor_id),c=card("📦",`Order ${order.id}`,statusLabels[order.status]||order.status);
   button(c,"← All orders",()=>{managementOrderId=null;route("management")},true);summary(c,order);timeline(c,order);
-  const details=node("dl");for(const [label,value] of [["Customer",customer?.displayName||customer?.username||"Unknown"],["Contractor",contractor?.displayName||contractor?.username||"Not assigned"],["Created",new Date(order.created_at).toLocaleString()],["Service",order.service==="full_service"?"Pickup & return":"Drop off"],["Address",order.pickup_address||"Shop drop-off"],["Delivery note",order.delivery_instructions||"—"],["Round-trip miles",order.service==="full_service"?Number(order.delivery_miles||0).toFixed(1):"—"],["Bag",order.bag_id||"Not assigned"]])details.append(node("dt",label),node("dd",value));c.append(details);
+  const details=node("dl");for(const [label,value] of [["Customer",customer?.displayName||customer?.username||"Unknown"],["Washing Specialist",contractor?.displayName||contractor?.username||"Not assigned"],["Created",new Date(order.created_at).toLocaleString()],["Service",order.service==="full_service"?"Pickup & return":"Drop off"],["Address",order.pickup_address||"Shop drop-off"],["Delivery note",order.delivery_instructions||"—"],["Round-trip miles",order.service==="full_service"?Number(order.delivery_miles||0).toFixed(1):"—"],["Bag",order.bag_id||"Not assigned"]])details.append(node("dt",label),node("dd",value));c.append(details);
   if(order.status==="paid_hold")button(c,"Move paid bag to pickup area",()=>actionWizard(order,"staff_release"));
 }
 function alertText(alert){
@@ -1484,7 +1485,7 @@ function managementBack(parent) {
   }, true);
 }
 function moneyManagement(data) {
-  const c = card("💵", "Money", "Staging estimate only. No contractor payout or real money is sent from this screen.");
+  const c = card("💵", "Money", "Customer payment status, Washing Specialist earnings, business costs, and estimated profit. Automated specialist payouts are not enabled yet.");
   managementBack(c);
   c.append(node("h3","Date range"));
   const period=select(c,"View",[["this_week","This week"],["last_week","Last week"],["last_30","Last 30 days"],["all","All time"],["custom","Custom dates"]],moneyPeriod);
@@ -1498,11 +1499,11 @@ function moneyManagement(data) {
   c.append(node("p",rangeStart&&rangeEnd?`Showing ${rangeStart.toLocaleDateString()} through ${rangeEnd.toLocaleDateString()}`:"Showing all recorded dates",{class:"note"}));
   const jobs = (data.orders || []).filter((o) => o.assigned_contractor_id);
   const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+Number(order.total||0),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
-  const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Contractor earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
-  c.append(node("p","Estimated profit = verified customer payments − contractor earnings on returned work − costs entered below.",{class:"note"}),node("h3","Jobs and contractor pay"),node("p","Payments become ready for payout 24 hours after the customer payment is verified. Bank timing may take longer. Paid jobs are locked.",{class:"note"}));
-  const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Job","Contractor","Completed","Base","Delivery","Rush","Mileage / other","Total","Payout","Edit"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
+  const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Specialist earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
+  c.append(node("p","Estimated profit = verified customer payments − Washing Specialist earnings on returned work − costs entered below.",{class:"note"}),node("h3","Jobs and Washing Specialist pay"),node("p","Payments become ready for payout 24 hours after the customer payment is verified. Bank timing may take longer. Paid jobs are locked.",{class:"note"}));
+  const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Job","Washing Specialist","Completed","Base","Delivery","Rush","Mileage / other","Total","Payout","Edit"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
   for(const order of completed){const contractor=contractors.find(person=>person.id===order.assigned_contractor_id),pay=order.contractor_pay||{},row=node("tr"),status={waiting_for_customer_payment:"Waiting for customer payment",clearing:order.contractor_payout_eligible_at?`Clears ${new Date(order.contractor_payout_eligible_at).toLocaleString()}`:"Clearing",ready:"Ready for payout",paid:"Paid"}[order.contractor_payout_status]||"Waiting";for(const value of [order.id,contractor?.displayName||contractor?.username||"Contractor",new Date(order.returned_at).toLocaleDateString(),`$${Number(pay.base||0).toFixed(2)}`,`$${Number(pay.deliveryBonus||0).toFixed(2)}`,`$${Number(pay.rushBonus||0).toFixed(2)}`,`$${Number(pay.adjustments||0).toFixed(2)}`,`$${Number(pay.total||0).toFixed(2)}`,status])row.append(node("td",value));const action=node("td");if(order.contractor_payout_status!=="paid")button(action,"Edit",()=>{moneyEditOrderId=order.id;route("management")},true);else action.append(node("span","Locked",{class:"muted"}));row.append(action);body.append(row)}
-  if(!completed.length){const row=node("tr"),empty=node("td","No completed contractor jobs in this date range.");empty.colSpan=10;row.append(empty);body.append(row)}table.append(body);wrap.append(table);c.append(wrap);
+  if(!completed.length){const row=node("tr"),empty=node("td","No completed Washing Specialist jobs in this date range.");empty.colSpan=10;row.append(empty);body.append(row)}table.append(body);wrap.append(table);c.append(wrap);
   const editing=completed.find(order=>order.id===moneyEditOrderId);if(editing&&editing.contractor_payout_status!=="paid"){const contractor=contractors.find(person=>person.id===editing.assigned_contractor_id),current=editing.contractor_pay_adjustments?.[0],box=node("div",undefined,{class:"bag-card"});box.append(node("h3",`Edit ${editing.id}`),node("p",contractor?.displayName||contractor?.username||"Contractor",{class:"muted"}));const extra=field(box,"Mileage or other adjustment","number",Number(editing.contractor_pay?.adjustments||0).toFixed(2)),reason=field(box,"Reason","text",current?.reason||"");extra.min="-500";extra.max="500";extra.step="0.01";button(box,"Save job pay",async()=>{await api("/api/management/pay-adjustments",{action:"set",orderId:editing.id,amount:Number(extra.value),reason:reason.value});moneyEditOrderId=null;await route("management");message("Job pay updated.")});button(box,"Cancel",()=>{moneyEditOrderId=null;route("management")},true);c.append(box)}
   c.append(node("h3","Enter a business cost"));const description=field(c,"Description","text"),category=select(c,"Category",[["supplies","Supplies"],["rent","Rent"],["utilities","Utilities"],["software","Software"],["marketing","Marketing"],["other","Other"]]),date=field(c,"Date","date",shopDateKey()),amount=field(c,"Amount","number");amount.min="0.01";amount.max="100000";amount.step="0.01";
   button(c,"Add cost",async()=>{await api("/api/management/costs",{action:"add",description:description.value,category:category.value,date:date.value,amount:Number(amount.value)});await route("management");message("Business cost added.")});
@@ -1604,25 +1605,25 @@ function editManagedAccount(account) {
   if (account.role === "contractor" && !account.approved) {
     const review = node("div", undefined, { class: "bag-card" });
     review.append(
-      node("h3", "Contractor approval"),
+      node("h3", "Washing Specialist approval"),
       node(
         "p",
-        "Approve only after you have spoken with this contractor and met them at the shop.",
+        "Approve only after you have spoken with this Washing Specialist and met them at the shop.",
         { class: "muted" },
       ),
     );
-    const phoneConfirmed = check(review, "I spoke with this contractor by phone."),
-      inPersonConfirmed = check(review, "I met this contractor in person at the shop.");
-    button(review, "Approve contractor", async () => {
+    const phoneConfirmed = check(review, "I spoke with this Washing Specialist by phone."),
+      inPersonConfirmed = check(review, "I met this Washing Specialist in person at the shop.");
+    button(review, "Approve Washing Specialist", async () => {
       if (!phoneConfirmed.checked || !inPersonConfirmed.checked)
-        throw Error("Complete both contractor review steps first.");
+        throw Error("Complete both Washing Specialist review steps first.");
       await api("/api/management/approve", {
         userId: account.id,
         phoneConfirmed: true,
         inPersonConfirmed: true,
       });
       await route("management");
-      message("Contractor approved.");
+      message("Washing Specialist approved.");
     });
     c.append(review);
   }
@@ -1687,13 +1688,13 @@ function accountTable(data, role) {
   const people = (data.users || []).filter((u) => u.role === role),
     c = card(
       role === "customer" ? "👤" : "🧺",
-      role === "customer" ? "Customers" : "Contractor applications & accounts",
+      role === "customer" ? "Customers" : "Washing Specialist applications & accounts",
       role === "customer"
         ? "Find a customer, update their contact details, pause access, or manage their bag."
         : "Approve workers, update contact details, pause access, or reset a password.",
     );
   managementBack(c);
-  button(c, role === "customer" ? "Add customer login" : "Add contractor login", () => createPilotLogin(role));
+  button(c, role === "customer" ? "Add customer login" : "Add Washing Specialist login", () => createPilotLogin(role));
   const wrap = node("div", undefined, { class: "table-wrap" }),
     table = node("table"),
     head = node("thead"),
@@ -1735,12 +1736,12 @@ function accountTable(data, role) {
 }
 function reviewContractor(account) {
   main.replaceChildren();
-  const c=card("🧺","Contractor approval","Review the information they entered. You do not need to edit it before deciding.");
+  const c=card("🧺","Washing Specialist approval","Review the information they entered. You do not need to edit it before deciding.");
   const details=node("dl");
   for(const [label,value] of [["Name",account.displayName||"Not provided"],["Phone",account.phone||"Not provided"],["Email",account.email||"Not provided"],["Username",account.username]])details.append(node("dt",label),node("dd",value));
-  c.append(details,node("p","Approve only after speaking with this contractor by phone and meeting them in person at the shop.",{class:"note"}));
-  const phoneConfirmed=check(c,"I spoke with this contractor by phone."),inPersonConfirmed=check(c,"I met this contractor in person at the shop.");
-  button(c,"Approve contractor",async()=>{if(!phoneConfirmed.checked||!inPersonConfirmed.checked)throw Error("Complete both contractor review steps first.");await api("/api/management/approve",{userId:account.id,phoneConfirmed:true,inPersonConfirmed:true});managementView="contractors";await route("management");message("Contractor approved.");});
+  c.append(details,node("p","Approve only after speaking with this Washing Specialist by phone and meeting them in person at the shop.",{class:"note"}));
+  const phoneConfirmed=check(c,"I spoke with this Washing Specialist by phone."),inPersonConfirmed=check(c,"I met this Washing Specialist in person at the shop.");
+  button(c,"Approve Washing Specialist",async()=>{if(!phoneConfirmed.checked||!inPersonConfirmed.checked)throw Error("Complete both Washing Specialist review steps first.");await api("/api/management/approve",{userId:account.id,phoneConfirmed:true,inPersonConfirmed:true});managementView="contractors";await route("management");message("Washing Specialist approved.");});
   button(c,"Not yet — go back",()=>{managementView="contractors";route("management")},true);
 }
 function bagInventory(data) {
@@ -1816,7 +1817,7 @@ function bagInventory(data) {
 }
 function createPilotLogin(role) {
   main.replaceChildren();
-  const c = card(role === "customer" ? "👤" : "🧺", role === "customer" ? "Add customer login" : "Add contractor login", "They must accept every pilot agreement condition on first sign-in.");
+  const c = card(role === "customer" ? "👤" : "🧺", role === "customer" ? "Add customer login" : "Add Washing Specialist login", "They must accept every agreement condition on first sign-in.");
   const username = field(c, "Username", "text"), password = field(c, "Temporary password", "password");
   username.placeholder = "example: jordan-test"; password.placeholder = "At least 12 characters";
   button(c, "Create login", async () => {
@@ -1959,7 +1960,7 @@ async function home() {
   for(const notice of notices.filter(item=>item.type==="pricing").slice(0,1)){
     const prices=notice.pricing||{};
     const update=card("🏷",notice.title||"Pricing update",`Effective ${new Date(notice.effective_at).toLocaleDateString()}. Existing booked orders keep their original rates.`);
-    update.append(node("p",customer?`Drop-off $${Number(prices.dropoff).toFixed(2)}/lb · Rush +$${Number(prices.rushPerLb).toFixed(2)}/lb`:`Contractor pay $${Number(prices.contractor).toFixed(2)}/approved lb`,{class:"note"}));
+    update.append(node("p",customer?`Drop-off $${Number(prices.dropoff).toFixed(2)}/lb · Rush +$${Number(prices.rushPerLb).toFixed(2)}/lb`:`Washing Specialist pay $${Number(prices.contractor).toFixed(2)}/approved lb`,{class:"note"}));
   }
   const counts = node("div", undefined, { class: "stat-grid" });
   intro.append(counts);
@@ -2150,7 +2151,8 @@ try {
   pricingPreview = d.pricing;
   rewardsPreview = d.rewards;
   agreementVersion = d.agreement?.version || null;
-  if (d.staging?.disposable)
+  if(d.staging?.synthetic===false)document.querySelector(".staging").textContent="Secure live service · real customer payments enabled";
+  else if (d.staging?.disposable)
     document.querySelector(".staging").textContent =
       "Private preview · practice data only · no real payments or documents";
   user = d.user;

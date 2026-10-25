@@ -59,18 +59,18 @@ async function assertMobileBasics(){
 
 try{
  await page.goto(base+'/');
- await page.getByRole('heading',{name:'How will you use Cotton Roots?',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'What would you like to do?',exact:true}).waitFor();
  await page.locator('summary[aria-label="About Customer accounts"]').click();
  await page.getByText(/register your bag, place an order/i).waitFor();
- await page.getByRole('link',{name:'Continue as Customer',exact:true}).waitFor();
- await page.getByRole('link',{name:'Continue as Contractor',exact:true}).waitFor();
+ await page.getByRole('link',{name:'Start as a Customer',exact:true}).waitFor();
+ await page.getByRole('link',{name:'Become a Washing Specialist',exact:true}).waitFor();
  await assertMobileBasics();
- await page.getByRole('link',{name:'Continue as Customer',exact:true}).click();
+ await page.getByRole('link',{name:'Start as a Customer',exact:true}).click();
  await page.waitForURL(`${base}/customer`);
  await page.goto(base+'/');
- await page.getByRole('heading',{name:'How will you use Cotton Roots?',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'What would you like to do?',exact:true}).waitFor();
  await page.goto(`${base}/?choose=1`);
- await page.getByRole('heading',{name:'How will you use Cotton Roots?',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'What would you like to do?',exact:true}).waitFor();
  await login('customer','customer');
  await page.getByRole('heading',{name:'A little less laundry.',exact:true}).waitFor();
  await page.reload();
