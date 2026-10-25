@@ -539,7 +539,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     }else if(/^\/api\/orders\/[^/]+\/actions$/.test(path)){
      const id=path.split('/')[3],index=state.orders.findIndex(o=>o.id===id),o=state.orders[index];if(!o||!visible(o,user))fail(404,'Order not found');
      const action=body.action,bag=state.bags.find(b=>b.id===o.bag_id),bagVerified=typeof body.bagToken==='string'&&body.bagToken===bag.token;
-     const customerActions=[ACTION.DROP_OFF,ACTION.PICKUP,'rate'];const contractorActions=[ACTION.ACCEPT,ACTION.WEIGH,ACTION.CHECK_OUT,ACTION.RETURN_BAG,ACTION.CHECK_IN];
+     const customerActions=[ACTION.DROP_OFF,ACTION.PICKUP,'rate'];const contractorActions=[ACTION.ACCEPT,ACTION.WEIGH,ACTION.CHECK_OUT,ACTION.RETURN_BAG];
      if(customerActions.includes(action)){if(user.role!=='customer'||o.customer_id!==user.id)fail(403,'Order owner required');if(action===ACTION.DROP_OFF&&payment?.provider==='stripe'&&!user.payment_method_ready)fail(403,'Verify your payment method before dropping off laundry')}
      else if(contractorActions.includes(action)){if(user.role!=='contractor'||!user.approved)fail(403,'Approved contractor required');if(action===ACTION.ACCEPT&&payment?.connect&&!user.payout_onboarding_complete)fail(403,'Complete tax, identity, and bank payout setup before accepting work');if(action!==ACTION.ACCEPT&&o.assigned_contractor_id!==user.id)fail(403,'Assigned contractor required')}
      else if(action===ACTION.RELEASE){if(!staff(user))fail(403,'Staff required')}
@@ -566,7 +566,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
       if(updated.billed_pounds)updated.total=invoiceTotal(updated.service,updated.billed_pounds,updated.rush_approved,{dropoff:updated.customer_rate_per_lb??DEFAULT_PRICING.dropoff,full_service:updated.customer_rate_per_lb??DEFAULT_PRICING.full_service,rushPerLb:updated.rush_rate_per_lb??DEFAULT_PRICING.rushPerLb},updated.delivery_fee||0);
       state.orders[index]=updated;result={order:publicOrder(updated)};
       if(action===ACTION.DROP_OFF)await notifyCustomer(updated,'dropped_off');
-      if(action===ACTION.CHECK_IN||action===ACTION.RETURN_BAG&&o.service==='full_service')await notifyCustomer(updated,'ready');
+      if(action===ACTION.RETURN_BAG)await notifyCustomer(updated,'ready');
      }
     }else fail(404,'Not found');
     state.audit.push({id:token().slice(0,24),actor:user.id,at:new Date().toISOString(),path,action:body.action||path.split('/').pop(),order_id:result.order?.id,prior_status:JSON.parse(before).orders.find(o=>o.id===result.order?.id)?.status,new_status:result.order?.status,request_id:requestKey});

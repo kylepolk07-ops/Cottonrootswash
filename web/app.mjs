@@ -789,12 +789,11 @@ async function orders() {
             ),
         );
       if (o.status === "washing") {
-        const next = !o.return_bag_scanned_at ? "return_bag" : "wall_checkin";
+        const next = "return_bag";
         button(
           c,
           {
             return_bag: o.service==="full_service"?"Scan bag at customer return":"Scan bag on return",
-            wall_checkin: "Check in at shop",
           }[next],
           () => actionWizard(o, next),
         );
@@ -825,7 +824,6 @@ async function actionWizard(o, action) {
     record_weight: ["⚖", "Record measured weight"],
     wall_checkout: [o.service==="full_service"?"🚗":"🏪", o.service==="full_service"?"Confirm customer pickup":"Check out at shop"],
     return_bag: ["🧺", o.service==="full_service"?"Return laundry to customer":"Return the same bag"],
-    wall_checkin: ["🏪", "Check in at shop"],
     accept_job: ["📅", "Can you meet this deadline?"],
     staff_release: ["🔐", "Move to paid pickup bin"],
     rate: ["⭐", "How was your laundry?"],
@@ -846,9 +844,7 @@ async function actionWizard(o, action) {
     record_weight: "Weight saved. Next, confirm checkout from the shop.",
     wall_checkout:
       "Checked out. Wash, dry, and fold this order, then return to My jobs.",
-    return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Bag scan saved. Next, confirm check-in at the shop.",
-    wall_checkin:
-      "Return complete. Earnings stay pending until customer payment is verified.",
+    return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Return complete. The clean bag is checked in and the customer has been notified.",
     accept_job: "Offer accepted. Today was added to your availability. Open My jobs when you are ready to begin.",
     staff_release: "Bag moved to the paid pickup bin.",
     rate: "Thank you for your feedback.",
@@ -969,7 +965,7 @@ async function actionWizard(o, action) {
     ].includes(action)
   )
     await bag();
-  else if (["wall_checkout", "wall_checkin"].includes(action)) await station();
+  else if (action === "wall_checkout") await station();
   else if (action === "accept_job") {
     stage.append(
       node(
@@ -1885,7 +1881,6 @@ function stepLabel(action) {
       record_weight: "SHOP VISIT 1 · BAG + WEIGHT",
       wall_checkout: "SHOP VISIT 1 · SHOP CHECKOUT",
       return_bag: "SHOP VISIT 2 · SAME BAG",
-      wall_checkin: "SHOP VISIT 2 · SHOP CHECK-IN",
       staff_release: "PAYMENT VERIFIED · PAID BIN",
       customer_pickup: "PAID & READY · MATCH YOUR BAG",
       rate: "ORDER COMPLETE · THANK YOU",
@@ -2147,7 +2142,7 @@ function guide(index = 0) {
     [
       "🏪",
       "Return on your second visit.",
-      "Scan the same bag, then confirm shop check-in. Returned laundry is not automatically paid or ready for customer pickup.",
+      "Scan the same clean bag and confirm the return. That one confirmation checks it in, marks washing complete, and notifies the customer.",
     ],
     [
       "🌱",

@@ -198,7 +198,6 @@ test('pickup and return orders protect addresses and include distance pricing',a
  const replaced=await owner.request('/api/management/pay-adjustments',{method:'POST',body:{action:'set',orderId:offer.id,reason:'Corrected mileage',amount:3}});assert.equal(replaced.status,200);assert.equal(replaced.data.contractorPay.adjustments,3);assert.equal(replaced.data.contractorPay.total,13.63);
  const earnings=await contractor.request('/api/earnings'),entry=earnings.data.earnings.find(item=>item.order_id===offer.id);assert.equal(entry.delivery_bonus,2.13);assert.equal(entry.adjustments,3);assert.equal(entry.amount,13.63);assert.equal(entry.status,'waiting_for_customer_payment');
  const customerOrder=(await customer.request('/api/orders')).data.orders.find(item=>item.id===offer.id);assert.equal(customerOrder.contractor_pay_adjustments,undefined,'customer cannot see contractor pay adjustments');
- assert.equal((await action(contractor,offer.id,'wall_checkin',{stationToken:h.fixtures.stationToken})).status,409);
 });
 
 test('customer complaints are private, persistent and managed by staff',async t=>{
@@ -241,9 +240,7 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  denied(await action(assigned,o.id,'record_weight',{bagToken:'wrong',measuredPounds:8.1,weightPhoto}));
  const weighed=await action(assigned,o.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto});assert.equal(weighed.status,200,JSON.stringify(weighed.data));assert.equal(weighed.data.order.billed_pounds,8.5);
  assert.equal((await action(assigned,o.id,'wall_checkout',{shopConfirmed:true})).status,200);
- denied(await action(assigned,o.id,'wall_checkin',{shopConfirmed:true}));
  assert.equal((await action(assigned,o.id,'return_bag',scan)).status,200);
- assert.equal((await action(assigned,o.id,'wall_checkin',{shopConfirmed:true})).status,200);
  denied(await action(c,o.id,'customer_pickup',scan));
  const earnings=await assigned.request('/api/earnings');assert.equal(earnings.status,200);assert.ok(earnings.data.earnings.every(e=>e.status!=='approved'&&e.status!=='paid'));
  const owner=await h.client('owner');const audit=JSON.stringify((await owner.request('/api/management')).data.audit);
