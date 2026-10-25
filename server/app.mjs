@@ -15,6 +15,7 @@ import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeCheckout,createStripePaymentSetup,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
 import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
+import {chooseScaleWeight} from './weight-reading.mjs';
 import {createWorker,OEM,PSM} from 'tesseract.js';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
@@ -369,7 +370,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    try {
     if(path==='/api/weights/read'){
      if(user.role!=='contractor'||!user.approved)fail(403,'Approved Washing Specialist required');const photo=photoPayload(body.photo,'scale reading');let recognized;try{recognized=await (await weightReader()).recognize(photo.bytes)}catch{fail(503,'The scale reader is temporarily unavailable. Retake the photo and try again')}
-     const candidates=(recognized.data.text.match(/\d{1,3}(?:[.,]\d{1,2})?/g)||[]).map(value=>Number(value.replace(',','.'))).filter(value=>value>=0.1&&value<=200);if(!candidates.length)fail(422,'The scale number could not be read. Move closer, avoid glare, and retake the photo');result={measuredPounds:candidates[0],confidence:Math.round(recognized.data.confidence||0)};
+     const reading=chooseScaleWeight(recognized);if(!reading)fail(422,'The scale number could not be read. Move closer, avoid glare, and retake the photo');result={measuredPounds:reading.value,confidence:Math.round(reading.confidence||recognized.data.confidence||0)};
     }else if(path==='/api/agreements/accept'){
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');

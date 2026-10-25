@@ -899,9 +899,9 @@ async function actionWizard(o, action) {
         { class: "note" },
       ),
     );
-    const photoLabel=node("label","Take scale photo"),photo=node("input",undefined,{type:"file",accept:"image/*",capture:"environment"}),reading=node("p","No photo taken yet.",{class:"weight-output",role:"status"});photoLabel.append(photo);stage.append(photoLabel,node("p","Move close enough that the scale number is sharp, fully visible, and free of glare.",{class:"muted"}),reading);
+    const photoLabel=node("label","Take scale photo"),photo=node("input",undefined,{type:"file",accept:"image/*",capture:"environment"}),reading=node("p","No photo taken yet.",{class:"weight-output",role:"status"}),weightLabel=node("label","Weight shown on scale (lb)"),weightInput=node("input",undefined,{type:"number",min:"0.1",max:"200",step:"0.01",inputmode:"decimal",placeholder:"Example: 14.76",disabled:""});photoLabel.append(photo);weightLabel.append(weightInput);stage.append(photoLabel,node("p","Move close enough that the scale number is sharp, fully visible, and free of glare.",{class:"muted"}),reading,weightLabel);
     let photoData="",detectedWeight=null;
-    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Reading the scale photo…";detectedWeight=null;try{photoData=await prepareDeliveryPhoto(file);const result=await api("/api/weights/read",{photo:photoData});detectedWeight=Number(result.measuredPounds);reading.textContent=`Detected weight: ${detectedWeight.toFixed(1)} lb`;message("Check that the detected number matches the scale photo, then confirm.")}catch(error){photo.value="";photoData="";reading.textContent="The number was not clear enough. Retake the photo.";message(error.message,true)}});
+    photo.addEventListener("change",async()=>{const file=photo.files?.[0];if(!file)return;reading.textContent="Reading the scale photo…";detectedWeight=null;weightInput.value="";weightInput.disabled=true;try{photoData=await prepareDeliveryPhoto(file);const result=await api("/api/weights/read",{photo:photoData});detectedWeight=Number(result.measuredPounds);weightInput.value=String(detectedWeight);weightInput.disabled=false;reading.textContent=`Detected weight: ${detectedWeight.toFixed(2)} lb`;message("Compare the number below with the scale photo. Correct it if needed, then confirm.")}catch(error){photo.value="";photoData="";reading.textContent="The number was not clear enough. Retake the photo.";message(error.message,true)}});
     stage.append(
       node(
         "p",
@@ -910,8 +910,10 @@ async function actionWizard(o, action) {
       ),
     );
     button(stage, "Confirm this step", async () => {
+      const confirmedWeight=Number(weightInput.value);
       if(!photoData||!Number.isFinite(detectedWeight))throw Error("Take a clear scale photo and wait for the app to read it first.");
-      body.measuredPounds = detectedWeight;
+      if(!Number.isFinite(confirmedWeight)||confirmedWeight<0.1||confirmedWeight>200)throw Error("Enter the exact weight shown in the scale photo.");
+      body.measuredPounds = confirmedWeight;
       body.weightPhoto=photoData;
       await submit();
     });
