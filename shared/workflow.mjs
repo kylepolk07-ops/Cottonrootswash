@@ -18,7 +18,7 @@ export function transition(order,action,ctx={}){
       o.status=ORDER_STATUS.AT_SHOP;o.dropped_at=at;break;
     case ACTION.ACCEPT:
       requireIt([ORDER_STATUS.AT_SHOP,ORDER_STATUS.OFFERED].includes(o.status),'Job unavailable');
-      requireIt(ctx.contractorApproved===true && ctx.deadlineAcknowledged===true,'Contractor onboarding and deadline acknowledgment required');
+      requireIt(ctx.contractorApproved===true && ctx.deadlineAcknowledged===true && ctx.availabilityConfirmed===true,'Contractor onboarding, availability, and deadline acknowledgment required');
       o.status=ORDER_STATUS.ACCEPTED;o.assigned_contractor_id=ctx.contractorId;o.accepted_at=at;if(o.rush_requested)o.rush_approved=true;break;
     case ACTION.WEIGH:
       requireIt(o.status===ORDER_STATUS.ACCEPTED,'Job must be accepted before weighing');

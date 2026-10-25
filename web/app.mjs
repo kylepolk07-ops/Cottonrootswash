@@ -844,7 +844,7 @@ async function actionWizard(o, action) {
     return_bag: o.service==="full_service"?"Delivery completed. The bag scan and delivery photo were saved.":"Bag scan saved. Next, scan the shop station to check in.",
     wall_checkin:
       "Return complete. Earnings stay pending until customer payment is verified.",
-    accept_job: "Offer accepted. Open My jobs when you are ready to begin.",
+    accept_job: "Offer accepted. Today was added to your availability. Open My jobs when you are ready to begin.",
     staff_release: "Bag moved to the paid pickup bin.",
     rate: "Thank you for your feedback.",
   };
@@ -969,13 +969,14 @@ async function actionWizard(o, action) {
         { class: "note" },
       ),
     );
-    const ack = check(stage, o.rush_requested?"I accept this rush job and can meet its deadline.":"I can meet this deadline.");
+    const ack = check(stage, o.rush_requested?"Yes, I am available for this rush job and can meet its deadline.":"Yes, I am available for this job and can meet its deadline.");
     button(stage, "Confirm this step", async () => {
       if (!o.due_at || !ack.checked)
         throw Error(
           "A confirmed deadline and your acknowledgment are required.",
         );
       body.deadlineAcknowledged = true;
+      body.availabilityConfirmed = true;
       await submit();
     });
   } else if (action === "rate") {

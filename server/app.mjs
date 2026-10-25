@@ -552,7 +552,6 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      else if(contractorActions.includes(action)){if(user.role!=='contractor'||!user.approved)fail(403,'Approved contractor required');if(action===ACTION.ACCEPT&&payment?.connect&&!user.payout_onboarding_complete)fail(403,'Complete tax, identity, and bank payout setup before accepting work');if(action!==ACTION.ACCEPT&&o.assigned_contractor_id!==user.id)fail(403,'Assigned contractor required')}
      else if(action===ACTION.RELEASE){if(!staff(user))fail(403,'Staff required')}
      else fail(403,'Action unavailable; payments are not connected');
-     if(action===ACTION.ACCEPT){const today=shopDateKey();if(!user.days.includes(today)||!['both',o.service].includes(user.preference))fail(409,'Set matching availability for today first')}
      if(action==='rate'){
       if(o.status!=='picked_up'||o.rating)fail(409,'Rating unavailable');if(!Number.isInteger(body.rating)||body.rating<1||body.rating>5)fail(400,'Rating must be 1–5');o.rating=body.rating;result={order:publicOrder(o)};
      }else{
@@ -567,7 +566,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
        if(match[1]==='image/jpeg'&&!(bytes[0]===0xff&&bytes[1]===0xd8)||match[1]==='image/png'&&!(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47))fail(400,'Invalid delivery photo');
        deliveryProof={bytes,type:match[1],file:`${token()}.${match[1]==='image/png'?'png':'jpg'}`};
       }
-      let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
+      let updated;try{updated=transition(o,action,{actorId:user.id,customerId:user.id,contractorId:user.id,contractorApproved:user.approved,deadlineAcknowledged:body.deadlineAcknowledged===true,availabilityConfirmed:body.availabilityConfirmed===true,bagOwnerVerified:bagVerified&&bag.customer_id===user.id,bagVerified,bagId:bag.id,wallStationVerified,measuredPounds:body.measuredPounds,staffAuthorized:staff(user)})}catch(e){fail(409,e.message)}
+      if(action===ACTION.ACCEPT){const today=shopDateKey();if(!user.days.includes(today))user.days.push(today)}
       if(action===ACTION.DROP_OFF){updated.due_at=shopDueDeadline();updated.due_note=SHOP_DUE_NOTE}
       if(weightProof){writeFileSync(resolve(proofDir,weightProof.file),weightProof.bytes,{mode:0o600});updated.weight_proof_file=weightProof.file;updated.weight_proof_type=weightProof.type;updated.weight_photo_at=new Date().toISOString()}
       if(deliveryProof){writeFileSync(resolve(proofDir,deliveryProof.file),deliveryProof.bytes,{mode:0o600});updated.delivery_proof_file=deliveryProof.file;updated.delivery_proof_type=deliveryProof.type;updated.delivery_photo_at=new Date().toISOString()}

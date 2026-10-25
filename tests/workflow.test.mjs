@@ -4,7 +4,7 @@ import {ACTION,transition,earningsState} from '../shared/workflow.mjs';
 import {ORDER_STATUS} from '../shared/rules.mjs';
 const seed=()=>({id:'o1',customer_id:'c1',bag_id:'b1',status:ORDER_STATUS.AWAITING_DROPOFF});
 const drop={bagOwnerVerified:true};
-const contractor={contractorApproved:true,deadlineAcknowledged:true,contractorId:'k1'};
+const contractor={contractorApproved:true,deadlineAcknowledged:true,availabilityConfirmed:true,contractorId:'k1'};
 const actor={actorId:'k1'};
 function throughAccepted(){let o=transition(seed(),ACTION.DROP_OFF,drop);return transition(o,ACTION.ACCEPT,contractor)}
 test('no fake dropoff or unapproved/deadline-less job acceptance',()=>{

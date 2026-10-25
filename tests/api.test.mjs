@@ -168,8 +168,8 @@ test('role dashboards summarize only authorized product data',async t=>{
  assert.equal(work.role,'contractor');assert.equal(work.activeJobs,0);assert.equal(work.offers,0,'Awaiting customer drop-off is not an offer');
  const scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};
  assert.equal((await action(c,order.id,'drop_off',scan)).status,200);
- assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
- assert.equal((await action(contractor,order.id,'accept_job',{deadlineAcknowledged:true})).status,200);
+ assert.equal((await action(contractor,order.id,'accept_job',{deadlineAcknowledged:true,availabilityConfirmed:true})).status,200);
+ assert.deepEqual((await contractor.request('/api/availability')).data.days,[shopDateKey()],'accepting work automatically confirms today as available');
  const assigned=(await contractor.request('/api/dashboard')).data.dashboard;
  assert.equal(assigned.nextJob.id,order.id);assert.equal(assigned.nextJob.customer_id,undefined);assert.equal(assigned.nextJob.detergent,undefined);
  const management=(await owner.request('/api/dashboard')).data.dashboard;
@@ -183,7 +183,7 @@ test('pickup and return orders protect addresses and include distance pricing',a
  const booked=await customer.request('/api/orders',{method:'POST',body:{service:'full_service',detergent:'standard',rush_requested:false,pickupAddress:'forged',returnAddress:'forged',distanceMiles:0}});assert.equal(booked.status,200);assert.equal(booked.data.order.status,'offered');assert.equal(booked.data.order.delivery_fee,3);assert.equal(booked.data.order.pickup_address,'100 Test Street, Sweetwater, TX');assert.equal(booked.data.order.return_address,booked.data.order.pickup_address);assert.equal(booked.data.order.delivery_instructions,'Leave beside the porch chair');assert.ok(booked.data.order.due_at);
  let offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===booked.data.order.id);assert.equal(offer.pickup_address,undefined);assert.equal(offer.delivery_miles,8);
  assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
- assert.equal((await action(contractor,offer.id,'accept_job',{deadlineAcknowledged:true})).status,200);
+ assert.equal((await action(contractor,offer.id,'accept_job',{deadlineAcknowledged:true,availabilityConfirmed:true})).status,200);
  offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===offer.id);assert.equal(offer.pickup_address,'100 Test Street, Sweetwater, TX');
  assert.equal((await action(contractor,offer.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto})).status,200);
  assert.equal((await action(contractor,offer.id,'wall_checkout',{stationToken:h.fixtures.stationToken})).status,409,'delivery pickup requires the bag, not the shop station');
@@ -231,9 +231,8 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  denied(await action(c,o.id,'drop_off',scan));
  const conflict=await action(c,o.id,'drop_off',{...scan,bagToken:'different'},key);assert.equal(conflict.status,409);
  denied(await action(c,o.id,'customer_pickup',scan));
- for(const actor of [k,k2])assert.equal((await actor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
  denied(await action(k,o.id,'accept_job',{deadlineAcknowledged:false}));
- const accepts=await Promise.all([k,k2].map(actor=>action(actor,o.id,'accept_job',{deadlineAcknowledged:true})));
+ const accepts=await Promise.all([k,k2].map(actor=>action(actor,o.id,'accept_job',{deadlineAcknowledged:true,availabilityConfirmed:true})));
  assert.equal(accepts.filter(r=>r.status===200).length,1,JSON.stringify(accepts));
  const assigned=accepts[0].status===200?k:k2,unassigned=assigned===k?k2:k;
  assert.ok(!(await unassigned.request('/api/orders')).data.orders.some(order=>order.id===o.id));
