@@ -6,7 +6,7 @@ Contributor: `/root/backend_product`. Scope: truthful server support for the ric
 
 - `GET /api/dashboard` returns a role-scoped summary. Customers receive only their own bag/order counts and next order; contractors receive eligible offer/job/availability/pending-pay totals; Management receives aggregate operational counts. The endpoint reuses server authorization and never exposes fixture secrets.
 - The stated Sweetwater Monday–Friday due table is implemented in `shared/schedule.mjs`, including the 2 PM Texas cutoff and daylight-saving-aware 5 PM deadlines.
-- New bookings no longer claim a guessed deadline. A deadline is created only after the customer completes the verified bag-and-shop-station drop-off, matching the build brief.
+- New bookings no longer claim a guessed deadline. A deadline is created only after the customer scans the assigned bag and explicitly verifies the shop drop-off.
 
 ## Deliberately still blocked
 

@@ -14,7 +14,7 @@ export function transition(order,action,ctx={}){
   switch(action){
     case ACTION.DROP_OFF:
       requireIt(o.status===ORDER_STATUS.AWAITING_DROPOFF,'Drop-off not expected');
-      requireIt(ctx.bagOwnerVerified===true && ctx.wallStationVerified===true,'Bag owner and wall QR must be verified');
+      requireIt(ctx.bagOwnerVerified===true,'Customer must verify the assigned bag');
       o.status=ORDER_STATUS.AT_SHOP;o.dropped_at=at;break;
     case ACTION.ACCEPT:
       requireIt([ORDER_STATUS.AT_SHOP,ORDER_STATUS.OFFERED].includes(o.status),'Job unavailable');

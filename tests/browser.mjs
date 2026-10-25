@@ -33,8 +33,8 @@ try{
  await scan('Scan the unique bag QR',fixtures.bagToken);
  await click('Next: close the box');await page.getByLabel('I shut and locked the box.').check();await click('Register this bag to me');await heading('Your Cotton Roots bags');
  await click('New order');await click('Next: choose detergent');await click('Next: review order');await click('Book this order');await heading('Your laundry, step by step');
- await click('Drop off this bag');await scan('Scan the matching bag QR','wrong-token');await click('Next: scan station');await scan('Scan the shop station QR',fixtures.stationToken);await click('Confirm this step');await page.getByRole('status').filter({hasText:'Bag owner and wall QR must be verified'}).waitFor();
- await click('Back: scan bag again');await scan('Scan the matching bag QR',fixtures.bagToken);await click('Next: scan station');await scan('Scan the shop station QR',fixtures.stationToken);await click('Confirm this step');await heading('Your laundry, step by step');
+ await click('Drop off this bag');await scan('Scan the matching bag QR','wrong-token');await click('Next: verify this drop-off');await click('VERIFY: I am dropping off this dirty bag at Cotton Roots & Company');await page.getByRole('status').filter({hasText:'Customer must verify the assigned bag'}).waitFor();
+ await click('Cancel and scan again');await scan('Scan the matching bag QR',fixtures.bagToken);await click('Next: verify this drop-off');await click('VERIFY: I am dropping off this dirty bag at Cotton Roots & Company');await heading('Your laundry, step by step');
  await page.reload();await click('My laundry');await heading('Your laundry, step by step');await page.getByLabel('Laundry status',{exact:true}).waitFor();await page.getByRole('button',{name:'Refresh status',exact:true}).waitFor();assert.equal(await page.getByText('At the shop',{exact:true}).count(),1);
  assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/management');return r.status}),403);
  await page.screenshot({path:resolve(shotDir,'customer-mobile.png'),fullPage:true});

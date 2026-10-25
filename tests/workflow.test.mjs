@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {ACTION,transition,earningsState} from '../shared/workflow.mjs';
 import {ORDER_STATUS} from '../shared/rules.mjs';
 const seed=()=>({id:'o1',customer_id:'c1',bag_id:'b1',status:ORDER_STATUS.AWAITING_DROPOFF});
-const drop={bagOwnerVerified:true,wallStationVerified:true};
+const drop={bagOwnerVerified:true};
 const contractor={contractorApproved:true,deadlineAcknowledged:true,contractorId:'k1'};
 const actor={actorId:'k1'};
 function throughAccepted(){let o=transition(seed(),ACTION.DROP_OFF,drop);return transition(o,ACTION.ACCEPT,contractor)}
 test('no fake dropoff or unapproved/deadline-less job acceptance',()=>{
- assert.throws(()=>transition(seed(),ACTION.DROP_OFF,{bagOwnerVerified:true}));
+ assert.throws(()=>transition(seed(),ACTION.DROP_OFF,{bagOwnerVerified:false}));
  const o=transition(seed(),ACTION.DROP_OFF,drop);
  assert.throws(()=>transition(o,ACTION.ACCEPT,{...contractor,deadlineAcknowledged:false}));
  assert.equal(transition(o,ACTION.ACCEPT,contractor).status,ORDER_STATUS.ACCEPTED);

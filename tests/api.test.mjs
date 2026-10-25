@@ -223,7 +223,6 @@ test('custody workflow rejects forged scans, unpaid pickup, duplicates and compe
  const h=await harness(t),c=await h.client('customer'),k=await h.client('contractor'),k2=await h.client('contractor2');
  const o=await setupOrder(h,c,{laundryNotes:'Cold water. Keep the blue school shirt separate.'}),scan={bagToken:h.fixtures.bagToken,stationToken:h.fixtures.stationToken};
  denied(await action(c,o.id,'drop_off',{...scan,bagToken:'forged'}));
- denied(await action(c,o.id,'drop_off',{...scan,stationToken:'forged'}));
  const key=randomUUID();
  const first=await action(c,o.id,'drop_off',scan,key);assert.equal(first.status,200,JSON.stringify(first.data));
  assert.equal(o.due_at,null,'Booking must not guess a deadline before verified drop-off');

@@ -936,7 +936,7 @@ async function actionWizard(o, action) {
     button(
       stage,
       action === "drop_off"
-        ? "Next: scan station"
+        ? "Next: verify this drop-off"
         : action === "record_weight"
           ? "Next: weigh laundry"
           : "Confirm this step",
@@ -945,7 +945,7 @@ async function actionWizard(o, action) {
           throw Error("Scan or enter the bag token first.");
         body.bagToken = token.value.trim();
         if(deliveryPhoto){const file=deliveryPhoto.files?.[0];if(!file)throw Error("Take a delivery photo first.");body.deliveryPhoto=await prepareDeliveryPhoto(file)}
-        custodyConfirmation(action === "drop_off"?station:action === "record_weight"?weigh:submit);
+        custodyConfirmation(action === "drop_off"?submit:action === "record_weight"?weigh:submit);
       },
     );
   }
@@ -1545,7 +1545,7 @@ async function managementTestTools() {
   managementBack(c);
   c.append(
     node("h3", "Shop drop-off QR"),
-    node("p", "Post this QR at the drop-off station. Customers scan it after scanning their bag.", { class: "note" }),
+    node("p", "Post this QR at the shop station for Washing Specialists to scan when checking laundry out and back in. Customers only scan and verify their own bag.", { class: "note" }),
     node("img", undefined, { src: "/api/management/test-kit/station-qr", alt: "Shop drop-off station QR code", class: "test-bag-qr" }),
     node("h3", "Sample bag QR"),
     node("img", undefined, { src: "/api/management/test-kit/bag-qr", alt: "Synthetic test bag QR code", class: "test-bag-qr" }),
