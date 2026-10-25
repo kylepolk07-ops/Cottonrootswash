@@ -12,9 +12,11 @@ export function chooseScaleWeight(recognized={}){
    const raw=match[0],value=Number(raw.replace(',','.'));
    if(!Number.isFinite(value)||value<0.1||value>200)continue;
    const places=decimalPlaces(raw);
-   // Scale displays normally show tenths or hundredths. Favor those over
-   // unrelated whole numbers printed on the scale or elsewhere in the photo.
-   const score=(places===2?100:places===1?70:0)+Math.min(100,Math.max(0,source.confidence));
+   // This shop scale displays hundredths (for example, 14.74). A whole number
+   // is usually a capacity/model marking elsewhere in the photo, so never
+   // present one as an automatic weight suggestion.
+   if(places!==2)continue;
+   const score=100+Math.min(100,Math.max(0,source.confidence));
    candidates.push({value,confidence:source.confidence,score,places});
   }
  }

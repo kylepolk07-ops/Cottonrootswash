@@ -7,8 +7,10 @@ test('scale reader favors a decimal display over unrelated whole numbers',()=>{
  assert.equal(reading.value,14.76);
 });
 
-test('scale reader accepts a normal tenths display',()=>{
- assert.equal(chooseScaleWeight({data:{text:'8.5',confidence:91}}).value,8.5);
+test('scale reader requires the shop scale hundredths display',()=>{
+ assert.equal(chooseScaleWeight({data:{text:'8.50',confidence:91}}).value,8.5);
+ assert.equal(chooseScaleWeight({data:{text:'3',confidence:99}}),null);
+ assert.equal(chooseScaleWeight({data:{text:'8.5',confidence:91}}),null);
 });
 
 test('scale reader rejects absent and implausible readings',()=>{
