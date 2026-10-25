@@ -268,6 +268,15 @@ test('secure login session survives a safe server restart',async t=>{
  assert.equal((await customer.request('/api/me')).status,401);
 });
 
+test('live owner password resynchronizes from protected deployment credentials',async t=>{
+ const dataDir=await mkdtemp(join(tmpdir(),'cotton-live-owner-')),payment={provider:'stripe',mode:'live',origin:'https://cotton.example',secretKey:'sk_live_1234567890abcdef',webhookSecret:'whsec_1234567890abcdef'},username='cotton.owner',first='first-owner-password-that-is-private',second='second-owner-password-that-is-private';
+ let app=await createApp({dataDir,payment,initialOwner:{username,password:first}});app.close?.();
+ app=await createApp({dataDir,payment,initialOwner:{username,password:second}});await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
+ const request=password=>fetch(`http://127.0.0.1:${app.server.address().port}/api/login`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password})});
+ assert.equal((await request(first)).status,401);assert.equal((await request(second)).status,200);
+ await new Promise(resolve=>app.server.close(resolve));app.close?.();await rm(dataDir,{recursive:true,force:true});
+});
+
 test('owner pricing changes are protected and new orders snapshot their rates',async t=>{
  const h=await harness(t),customer=await h.client('customer'),owner=await h.client('owner');
  const first={dropoff:3.25,full_service:4.5,rushPerLb:1.25,extraBag:12,contractor:1.5};

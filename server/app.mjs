@@ -73,9 +73,15 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
   const bagToken=token();state.bags.push({id:'bag-001',token:bagToken,customer_id:null});
   writeFileSync(resolve(dataDir,'fixtures.json'),JSON.stringify({accounts,bagToken,stationToken:state.stationToken},null,2),{mode:0o600});save();
  }
- if(!row&&payment?.mode==='live'){
+ if(payment?.mode==='live'){
   if(!initialOwner||!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(initialOwner.username)||typeof initialOwner.password!=='string'||initialOwner.password.length<24||initialOwner.password.length>256)throw Error('A secure initial live owner is required');
-  const salt=token();state.users.push({id:token().slice(0,24),username:initialOwner.username,role:'owner',salt,passwordHash:scryptSync(initialOwner.password,salt,64).toString('hex'),approved:true,active:true,created_at:new Date().toISOString()});save();
+  if(!row){
+   const salt=token();state.users.push({id:token().slice(0,24),username:initialOwner.username,role:'owner',salt,passwordHash:scryptSync(initialOwner.password,salt,64).toString('hex'),approved:true,active:true,created_at:new Date().toISOString()});save();
+  }else{
+   const owners=state.users.filter(user=>user.role==='owner'),owner=owners.find(user=>user.username===initialOwner.username)||(owners.length===1?owners[0]:null);if(!owner)throw Error('Live owner recovery username does not match an owner');
+   const candidate=scryptSync(initialOwner.password,owner.salt,64),matches=timingSafeEqual(candidate,Buffer.from(owner.passwordHash,'hex'));
+   if(owner.username!==initialOwner.username||!matches){owner.username=initialOwner.username;owner.salt=token();owner.passwordHash=scryptSync(initialOwner.password,owner.salt,64).toString('hex');owner.active=true;db.prepare('DELETE FROM sessions WHERE user_id=?').run(owner.id);state.audit.push({id:token().slice(0,24),actor:'live-owner-recovery',at:new Date().toISOString(),path:'startup',action:'owner_credentials_resynchronized'});save()}
+  }
  }
  // Older verified payments waited for a manual staff release. Returned bags
  // are already secured at the shop, so verified payment now makes them ready
