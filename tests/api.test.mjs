@@ -84,6 +84,11 @@ test('customers self-register only after completing every field and agreement',a
  const cookie=login.headers.get('set-cookie').split(';')[0],me=await h.anonymous('/api/me',{headers:{cookie}});assert.equal(me.status,200);const account=await me.json();assert.equal(account.rewards.referralCode,'taylor.customer');assert.equal(account.rewards.points,0);
 });
 
+test('remembered sign-in uses a persistent secure session without storing a password in the browser',async t=>{
+ const h=await harness(t),account=h.fixtures.accounts.find(item=>item.username==='customer');
+ const response=await h.anonymous('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:account.username,password:account.password,remember:true})});assert.equal(response.status,200);assert.match(response.headers.get('set-cookie'),/Max-Age=2592000/);assert.match(response.headers.get('set-cookie'),/HttpOnly/i);
+});
+
 test('customers can review, verify, and later edit their profile',async t=>{
  const h=await harness(t),customer=await h.client('customer');
  assert.equal((await customer.request('/api/profile',{method:'POST',body:{action:'verify'}})).status,400);

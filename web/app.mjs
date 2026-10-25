@@ -274,7 +274,8 @@ function login() {
   username.autocorrect = "off";
   username.spellcheck = false;
   password.autocomplete = "current-password";
-  const rememberLogin=check(f,"Remember my account type and username on this device",Boolean(remembered));
+  const rememberLogin=check(f,"Keep me signed in on this device",Boolean(remembered));
+  f.append(node("p","Your browser may also offer to save your password securely.",{class:"muted"}));
   const submit = node("button", "Sign in", { type: "submit" });
   f.append(submit);
   f.addEventListener("submit", async (e) => {
@@ -284,6 +285,7 @@ function login() {
       const d = await api("/api/login", {
         username: username.value.trim().toLowerCase(),
         password: password.value,
+        remember: rememberLogin.checked,
       });
       user = d.user;
       csrf = d.csrf;
@@ -308,8 +310,7 @@ function login() {
       submit.disabled = false;
     }
   });
-  if(app==="contractor"&&window.PublicKeyCredential){button(c,"Use a passkey",async()=>{const name=username.value.trim().toLowerCase();if(!name)throw Error("Enter your Management username first.");const options=await api("/api/passkeys/authentication/options",{username:name});options.challenge=fromBase64url(options.challenge);options.allowCredentials=(options.allowCredentials||[]).map(item=>({...item,id:fromBase64url(item.id)}));const credential=await navigator.credentials.get({publicKey:options});if(!credential)throw Error("Passkey sign-in was canceled.");const d=await api("/api/passkeys/authentication/verify",{username:name,credential:credentialJSON(credential)});user=d.user;csrf=d.csrf;page="home";const me=await api("/api/me");paymentPreview=me.staging?.payment||null;pricingPreview=me.pricing;rewardsPreview=me.rewards;agreementVersion=me.agreement?.version||null;user=me.user;await render();message("You are signed in with your passkey.")},true)}
-  if(app==="contractor"){button(c,"Set up this phone with a code",()=>{const existing=document.querySelector(".phone-setup-card");if(existing){existing.scrollIntoView({behavior:"smooth",block:"start"});existing.querySelector("input")?.focus();return}const setup=card("📱","Set up Management on this phone","On a computer already signed into Management, generate a one-time phone setup code. It expires after 10 minutes. The code identifies the correct Management account automatically.");setup.classList.add("phone-setup-card");const code=field(setup,"6-digit phone setup code","text");code.inputMode="numeric";code.autocomplete="one-time-code";code.maxLength=6;button(setup,"Continue",async()=>{const d=await api("/api/management/phone-setup/login",{code:code.value});user=d.user;csrf=d.csrf;page="home";await render();message("Phone verified. Now tap Add a passkey to this device.")});},true)}
+  if(app==="contractor"&&window.PublicKeyCredential){const options=node("details",undefined,{class:"management-signin-options"}),summary=node("summary","Management sign-in options"),panel=node("div");options.append(summary,panel);c.append(options);button(panel,"Use a Management passkey",async()=>{const name=username.value.trim().toLowerCase();if(!name)throw Error("Enter your Management username first.");const request=await api("/api/passkeys/authentication/options",{username:name});request.challenge=fromBase64url(request.challenge);request.allowCredentials=(request.allowCredentials||[]).map(item=>({...item,id:fromBase64url(item.id)}));const credential=await navigator.credentials.get({publicKey:request});if(!credential)throw Error("Passkey sign-in was canceled.");const d=await api("/api/passkeys/authentication/verify",{username:name,credential:credentialJSON(credential)});user=d.user;csrf=d.csrf;page="home";const me=await api("/api/me");paymentPreview=me.staging?.payment||null;pricingPreview=me.pricing;rewardsPreview=me.rewards;agreementVersion=me.agreement?.version||null;user=me.user;await render();message("You are signed in with your passkey.")},true);button(panel,"Set up a Management phone with a code",()=>{const existing=document.querySelector(".phone-setup-card");if(existing){existing.scrollIntoView({behavior:"smooth",block:"start"});existing.querySelector("input")?.focus();return}const setup=card("📱","Set up Management on this phone","On a computer already signed into Management, generate a one-time phone setup code. It expires after 10 minutes. The code identifies the correct Management account automatically.");setup.classList.add("phone-setup-card");const code=field(setup,"6-digit phone setup code","text");code.inputMode="numeric";code.autocomplete="one-time-code";code.maxLength=6;button(setup,"Continue",async()=>{const d=await api("/api/management/phone-setup/login",{code:code.value});user=d.user;csrf=d.csrf;page="home";await render();message("Phone verified. Now tap Add a passkey to this device.")});},true)}
   button(c,app==="customer"?"Create a Customer account":"Apply as a Washing Specialist",app==="customer"?customerRegistration:contractorApplication,true);
   const chooser=node("a","← Choose what you want to do",{href:"/?choose=1",class:"role-continue"});c.append(chooser);
 }
@@ -332,7 +333,7 @@ function customerAgreement(parent){
 function customerRegistration(){
  reset();const c=card("👤","Create a Customer account","Complete every field and agreement. Customer accounts activate automatically after successful registration.");
  const name=field(c,"Full name","text"),phone=field(c,"Mobile phone","tel"),email=field(c,"Email","email"),address=field(c,"Home or camper service address","text"),referralCode=field(c,"Friend’s referral username (optional)","text"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
- username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 12 characters.",{class:"note"}));const accepted=customerAgreement(c);
+ username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";c.append(node("p","Password must be at least 8 characters.",{class:"note"}));const accepted=customerAgreement(c);
  button(c,"Create Customer account",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(accepted.disabled||!accepted.checked)throw Error("Scroll through and accept the complete Customer Terms and Disclosures before registering.");await api("/api/customer-registrations",{displayName:name.value,phone:phone.value,email:email.value,address:address.value,referralCode:referralCode.value,username:username.value,password:password.value,agreed:true,conditions:customerTerms.map(([id])=>id)});login();message("Customer account created. Sign in with your new username and password.")});button(c,"Back to sign in",login,true);
 }
 function contractorApplication(){
@@ -340,7 +341,7 @@ function contractorApplication(){
   const c=card("🧺","Apply to be a washing specialist","Create your own login. Management will call you and meet you at the shop before approving work access.");
   const name=field(c,"Full name","text"),phone=field(c,"Phone number","tel"),email=field(c,"Email","email"),username=field(c,"Choose a username","text"),password=field(c,"Choose a password","password"),confirmPassword=field(c,"Enter password again","password");
   username.autocapitalize="none";username.autocomplete="username";password.autocomplete="new-password";confirmPassword.autocomplete="new-password";
-  c.append(node("p","Password must be at least 12 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
+  c.append(node("p","Password must be at least 8 characters. Your application stays pending until Management completes the phone call and in-person shop meeting.",{class:"note"}));
   const terms=termChecks(c,contractorTerms),approval=check(c,"I understand this is an application and I cannot accept jobs until Management completes the phone call and in-person shop meeting.");
   button(c,"Submit Washing Specialist application",async()=>{if(password.value!==confirmPassword.value)throw Error("Passwords do not match");if(!approval.checked||!terms.every(([,box])=>box.checked))throw Error("Check every agreement condition before applying.");await api("/api/contractor-applications",{displayName:name.value,phone:phone.value,email:email.value,username:username.value,password:password.value,agreed:true,conditions:terms.map(([id])=>id)});login();message("Application submitted. You can sign in, but jobs stay locked until Management approves you.")});
   button(c,"Back to sign in",login,true);
@@ -1330,7 +1331,7 @@ async function management() {
     username.placeholder = "example: jordan-test";
     username.autocapitalize = "none";
     const password = field(create, "Temporary password", "password");
-    password.placeholder = "At least 12 characters";
+    password.placeholder = "At least 8 characters";
     button(create, "Create pilot login", async () => {
       const result = await api("/api/management/accounts", {
         role: role.value,
@@ -1650,7 +1651,7 @@ function editManagedAccount(account) {
       true,
     );
   const password = field(c, "New temporary password", "password");
-  password.placeholder = "At least 12 characters";
+  password.placeholder = "At least 8 characters";
   button(
     c,
     "Reset password",
@@ -1828,7 +1829,7 @@ function createPilotLogin(role) {
   main.replaceChildren();
   const c = card(role === "customer" ? "👤" : "🧺", role === "customer" ? "Add customer login" : "Add Washing Specialist login", "They must accept every agreement condition on first sign-in.");
   const username = field(c, "Username", "text"), password = field(c, "Temporary password", "password");
-  username.placeholder = "example: jordan-test"; password.placeholder = "At least 12 characters";
+  username.placeholder = "example: jordan-test"; password.placeholder = "At least 8 characters";
   button(c, "Create login", async () => {
     const result = await api("/api/management/accounts", { role, username: username.value, temporaryPassword: password.value });
     main.replaceChildren(); const done = card("✓", "Login created", "Give these details to the tester privately. The password is shown once.");

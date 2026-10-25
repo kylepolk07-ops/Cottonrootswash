@@ -205,8 +205,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     if(!storedMatch&&!trialMatch||u?.active===false)fail(401,'Invalid credentials');
     db.prepare('DELETE FROM sessions WHERE expires<?').run(now);
     if(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count>=1000)fail(429,'Session capacity reached');
-    const sid=token(),csrf=token();db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+8*3600000);
-    headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${cookieSecurity}`;
+    const sid=token(),csrf=token(),sessionSeconds=body.remember===true?30*24*3600:8*3600;db.prepare('INSERT INTO sessions (id_hash,user_id,csrf,expires) VALUES (?,?,?,?)').run(hash(sid),u.id,csrf,now+sessionSeconds*1000);
+    headers['Set-Cookie']=`crc_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionSeconds}${cookieSecurity}`;
     send(200,{user:publicUser(u),csrf});return;
    }
    if(path==='/api/passkeys/authentication/options'&&req.method==='POST'){
@@ -232,7 +232,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const key=`application:${req.socket.remoteAddress}`,now=Date.now();let a=attempts.get(key);if(!a||now-a.at>3600000)a={count:0,at:now};attempts.set(key,a);if(++a.count>10)fail(429,'Too many applications. Try again later');
     const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',password=typeof body.password==='string'?body.password:'',displayName=typeof body.displayName==='string'?body.displayName.trim():'',phone=typeof body.phone==='string'?body.phone.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
     if(!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(username))fail(400,'Username must be 4–32 letters, numbers, dots, dashes, or underscores');
-    if(password.length<12||password.length>256)fail(400,'Password must be 12–256 characters');
+    if(password.length<8||password.length>256)fail(400,'Password must be 8–256 characters');
     if(displayName.length<2||displayName.length>80||phone.length<7||phone.length>32||email.length>128||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Enter your name, phone number, and a valid email address');
     if(body.agreed!==true||!Array.isArray(body.conditions)||body.conditions.length!==AGREEMENT_CONDITIONS.contractor.length||!AGREEMENT_CONDITIONS.contractor.every(id=>body.conditions.includes(id)))fail(400,'Agree to every contractor condition');
     if(state.users.some(u=>u.username===username))fail(409,'That username is unavailable');
@@ -244,7 +244,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
     const key=`customer-registration:${req.socket.remoteAddress}`,now=Date.now();let a=attempts.get(key);if(!a||now-a.at>3600000)a={count:0,at:now};attempts.set(key,a);if(++a.count>10)fail(429,'Too many registrations. Try again later');
     const username=typeof body.username==='string'?body.username.trim().toLowerCase():'',password=typeof body.password==='string'?body.password:'',displayName=typeof body.displayName==='string'?body.displayName.trim():'',phone=typeof body.phone==='string'?body.phone.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'',address=typeof body.address==='string'?body.address.trim():'',referralCode=typeof body.referralCode==='string'?body.referralCode.trim().toLowerCase():'';
     if(!/^[a-z0-9][a-z0-9._-]{3,31}$/.test(username))fail(400,'Username must be 4–32 letters, numbers, dots, dashes, or underscores');
-    if(password.length<12||password.length>256)fail(400,'Password must be 12–256 characters');
+    if(password.length<8||password.length>256)fail(400,'Password must be 8–256 characters');
     if(displayName.length<2||displayName.length>80||phone.length<7||phone.length>32||email.length>128||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||address.length<8||address.length>200)fail(400,'Enter your name, phone number, valid email, and service address');
     if(body.agreed!==true||!Array.isArray(body.conditions)||body.conditions.length!==AGREEMENT_CONDITIONS.customer.length||!AGREEMENT_CONDITIONS.customer.every(id=>body.conditions.includes(id)))fail(400,'Agree to every customer condition');
     if(state.users.some(u=>u.username===username))fail(409,'That username is unavailable');
@@ -432,14 +432,14 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const username=typeof body.username==='string'?body.username.trim().toLowerCase():'';
      const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';
      if(!['customer','contractor'].includes(body.role)||!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(username))fail(400,'Use a username with 3–32 lowercase letters, numbers, dashes, or underscores');
-     if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');
+     if(temporaryPassword.length<8||temporaryPassword.length>256)fail(400,'Temporary password must be 8–256 characters');
      if(state.users.some(account=>account.username===username))fail(409,'That username is already in use');
      const salt=token(),account={id:token().slice(0,24),username,role:body.role,salt,passwordHash:scryptSync(temporaryPassword,salt,64).toString('hex'),approved:body.role==='customer',days:[],preference:'both',created_at:new Date().toISOString(),pilot:true};
      state.users.push(account);result={user:publicUser(account)};
     }else if(/^\/api\/management\/accounts\/[^/]+$/.test(path)){
      if(user.role!=='owner')fail(403,'Owner access required');const id=path.split('/').at(-1),account=state.users.find(a=>a.id===id);if(!account)fail(404,'Account not found');
      if(body.action==='set_active'){if(typeof body.active!=='boolean'||account.id===user.id)fail(400,'That account cannot be changed');account.active=body.active;if(!body.active)revokeSessions(account.id);result={user:publicUser(account)};}
-     else if(body.action==='reset_password'){const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';if(temporaryPassword.length<12||temporaryPassword.length>256)fail(400,'Temporary password must be 12–256 characters');const salt=token();account.salt=salt;account.passwordHash=scryptSync(temporaryPassword,salt,64).toString('hex');account.password_reset_at=new Date().toISOString();revokeSessions(account.id);result={user:publicUser(account)};}
+     else if(body.action==='reset_password'){const temporaryPassword=typeof body.temporaryPassword==='string'?body.temporaryPassword:'';if(temporaryPassword.length<8||temporaryPassword.length>256)fail(400,'Temporary password must be 8–256 characters');const salt=token();account.salt=salt;account.passwordHash=scryptSync(temporaryPassword,salt,64).toString('hex');account.password_reset_at=new Date().toISOString();revokeSessions(account.id);result={user:publicUser(account)};}
      else if(body.action==='update_profile'){
       if(account.role==='customer'){
        if(!state.pricingPin)fail(409,'Set the six-digit owner PIN in Pricing first');const pin=typeof body.pin==='string'?body.pin:'';
