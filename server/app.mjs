@@ -164,18 +164,6 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      headers['Content-Type']='text/html; charset=utf-8';headers['Cache-Control']='no-store';headers['Referrer-Policy']='no-referrer';
      res.writeHead(200,headers);res.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotton Roots app QR</title><style>body{margin:0;background:#f8f0dc;color:#173f32;font:18px system-ui;text-align:center}main{max-width:520px;margin:auto;padding:32px 20px}img{display:block;width:min(82vw,420px);height:auto;margin:24px auto;background:white;padding:12px;border-radius:20px}p{line-height:1.5}a{color:#173f32;font-weight:700}</style></head><body><main><h1>Cotton Roots &amp; Co.</h1><p>Scan with your phone camera to open the private test app.</p><img src="/trial-qr.png" alt="QR code for the private Cotton Roots test app"><p>The QR contains only the website address. You will still need your private access code.</p><p><a href="/access">Open the app on this device</a></p></main></body></html>');return;
     }
-    if(req.method==='GET'&&remotePath==='/app-flyer.png'){
-     headers['Content-Type']='image/png';headers['Cache-Control']='public, max-age=3600';
-     res.writeHead(200,headers);res.end(readFileSync(resolve(root,'assets/marketing/cotton-roots-app-flyer.png')));return;
-    }
-    if(req.method==='GET'&&remotePath==='/app-flyer.pdf'){
-     headers['Content-Type']='application/pdf';headers['Content-Disposition']='inline; filename="cotton-roots-app-flyer.pdf"';headers['Cache-Control']='public, max-age=3600';
-     res.writeHead(200,headers);res.end(readFileSync(resolve(root,'assets/marketing/cotton-roots-app-flyer.pdf')));return;
-    }
-    if(req.method==='GET'&&remotePath==='/app-flyer'){
-     headers['Content-Type']='text/html; charset=utf-8';headers['Cache-Control']='no-store';
-     res.writeHead(200,headers);res.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotton Roots app flyer</title><style>body{margin:0;background:#f8f0dc;color:#173f32;font:17px system-ui;text-align:center}main{max-width:720px;margin:auto;padding:20px}img{display:block;width:100%;height:auto;margin:16px auto;box-shadow:0 4px 24px #173f3230}a{display:inline-block;margin:8px;padding:14px 20px;border-radius:12px;background:#173f32;color:white;font-weight:800;text-decoration:none}</style></head><body><main><h1>Cotton Roots app flyer</h1><p><a href="/app-flyer.pdf">Open printable PDF</a><a href="/app-flyer.png" download>Download image</a></p><img src="/app-flyer.png" alt="Cotton Roots app flyer with QR code"></main></body></html>');return;
-    }
     if(privateAccess&&await privateAccess(req,res,headers))return;
    }else if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(req.headers.host||''))fail(403,'Host rejected');
    const url=new URL(req.url,'http://localhost'),path=url.pathname;
