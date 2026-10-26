@@ -392,6 +392,7 @@ async function render() {
     page = "management";
   reset();
   const isManagement = app === "contractor" && ["owner", "staff"].includes(user.role);
+  const restrictedContractor = app === "contractor" && user.role === "contractor" && (!user.approved || paymentPreview?.connect && !user.payoutOnboardingComplete);
   const pages =
     isManagement
       ? [["management", "Management"]]
@@ -400,6 +401,11 @@ async function render() {
           ["home", "Home"],
           ["orders", "My laundry"],
           ["bags", "My bags"],
+          ["profile", "Profile"],
+        ]
+      : restrictedContractor
+      ? [
+          ["home", "Home"],
           ["profile", "Profile"],
         ]
       : [
@@ -492,7 +498,7 @@ async function render() {
     );
     return;
   }
-  if(app==="contractor"&&user.role==="contractor"&&(!user.approved||paymentPreview?.connect&&!user.payoutOnboardingComplete))return pendingContractor();
+  if(restrictedContractor&&!["profile","alerts"].includes(page))return pendingContractor();
   try {
     await (
       {
@@ -514,13 +520,13 @@ async function render() {
   }
 }
 async function pendingContractor(){
-  reset();nav.hidden=true;document.querySelector("footer").hidden=true;
   const onboarding=await api("/api/contractor-onboarding"),needsPayout=!onboarding.status.complete;
   const alert=card("🔔","Required before you can work",needsPayout?"Complete your W-9, identity verification, and bank payout connection. Management cannot approve the application until Stripe verifies these items.":"Your secure documents are complete. Management must finish the phone call and in-person meeting before approving your application.");
   const c=card(needsPayout?"💳":"⏳",needsPayout?"Complete your payout setup":"Application pending",needsPayout?"Stripe securely collects your tax information, verifies your identity, and connects your bank account. Cotton Roots does not receive your Social Security number, ID image, or bank account number.":"Your login works. Management must speak with you by phone and meet you at the shop before you can view or accept laundry jobs.");
   const name=field(c,"Full name","text",user.displayName||""),phone=field(c,"Phone number","tel",user.phone||""),email=field(c,"Email","email",user.email||"");
   button(c,"Save contact information",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value});user=result.user;message("Contact information saved.")},true);
   if(needsPayout){const steps=node("div",undefined,{class:"bag-card"});steps.append(node("strong","Required before approval"),node("p","1. W-9 tax information\n2. Government ID verification\n3. Bank account for secure payouts",{class:"muted"}));c.append(steps);if(onboarding.enabled){button(c,onboarding.status.started?"Continue secure Stripe setup":"Start secure Stripe setup",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)});button(c,"I finished Stripe setup — refresh status",async()=>{await route("home")},true)}else c.append(node("p","Secure document setup is being activated by Management. You will see the setup button here as soon as it is available.",{class:"confirm-warning"}))}
+  button(c,"Go to my profile",()=>route("profile"),true);
   if(!user.approved)c.append(node("p","Management must also complete your phone call and in-person shop meeting before work access is approved.",{class:"note"}));
 }
 function agreement() {
@@ -1131,7 +1137,8 @@ async function profile() {
     let smsConsent=null;if(user.role==="customer"){const consentLabel=node("label"),consentText=node("span","Text me necessary order-status updates. Message and data rates may apply. Reply STOP to opt out." );smsConsent=node("input");smsConsent.type="checkbox";smsConsent.checked=user.smsConsent===true;consentLabel.append(smsConsent,consentText);c.append(consentLabel)}
     if(address)address.autocomplete="street-address";
     button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value,...(address?{address:address.value,deliveryInstructions:instructions.value,smsConsent:smsConsent.checked}:{})});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
-    if(complete)button(c,"Cancel",()=>route("profile"),true);
+    button(c,"Back to home",()=>route("home"),true);
+    if(complete)button(c,"Cancel changes",()=>route("profile"),true);
   };
   if(!complete)return showEditor();
   const c=card("👤","My account",user.profileVerifiedAt?"Your contact information is complete and verified by you.":"Review everything below, then verify that it is correct.");
@@ -1142,6 +1149,12 @@ async function profile() {
   button(c,"Edit information",showEditor,true);
   c.append(node("p","Payment cards are handled securely by Stripe and are never displayed or stored in this profile.",{class:"muted"}));
   if(user.role==="customer")await customerRewards();
+  if(user.role==="contractor"){
+    const onboarding=await api("/api/contractor-onboarding"),payout=card("🏦","Banking and payouts",onboarding.status.complete?"Your Stripe payout account is verified and ready.":"Add your bank account securely through Stripe. Stripe also collects the required tax and identity information. Cotton Roots never sees or stores your bank account number.");
+    payout.append(node("span",onboarding.status.complete?"✓ Stripe verified":onboarding.status.started?"Setup started":"Setup required",{class:"pill"}));
+    if(!onboarding.status.complete){if(onboarding.enabled)button(payout,onboarding.status.started?"Continue bank setup with Stripe":"Set up banking with Stripe",async()=>{const result=await api("/api/contractor-onboarding/start",{});window.location.assign(result.onboardingUrl)});else payout.append(node("p","Stripe banking setup is being activated by Management. You can still return home and use the rest of your available account.",{class:"confirm-warning"}))}
+    button(payout,"Back to home",()=>route("home"),true);
+  }
 }
 async function bags() {
   const { bags = [] } = await api("/api/bags");
