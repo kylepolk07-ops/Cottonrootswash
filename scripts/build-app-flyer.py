@@ -41,24 +41,25 @@ centered("COTTON ROOTS & CO.", 610, font(serif_bold, 128), "#f4d58b")
 centered("WASH  &  FOLD", 760, font(sans_bold, 49), WHITE)
 centered("One little step. Fresh beginnings.", 845, font(sans, 57), WHITE)
 
-centered("FRESH LAUNDRY\nSTARTS HERE", 1120, font(serif_bold, 126), GREEN, spacing=18)
-centered("Scan to open the Cotton Roots app", 1430, font(sans_bold, 61), INK)
+centered("YOUR LAUNDRY.\nOUR CARE.", 1090, font(serif_bold, 132), GREEN, spacing=18)
+centered("Wash  •  Dry  •  Fold", 1400, font(sans_bold, 61), GOLD)
+centered("SCAN TO CREATE YOUR ACCOUNT", 1495, font(sans_bold, 54), INK)
 
 qr = Image.open(OUT / "cotton-roots-app-qr.png").convert("RGB")
 qr = qr.resize((930, 930), Image.Resampling.NEAREST)
-qx, qy = (W - 930) // 2, 1540
+qx, qy = (W - 930) // 2, 1600
 d.rounded_rectangle((qx - 35, qy - 35, qx + 965, qy + 965), radius=48, fill=WHITE, outline=GOLD, width=18)
 im.paste(qr, (qx, qy))
 
-centered("NEW HERE?", 2545, font(sans_bold, 60), GOLD)
-centered("Tap “Create an account” to get started.", 2630, font(sans_bold, 58), GREEN)
-centered("Get your first bag  •  Drop off  •  Track  •  Pick up fresh", 2730, font(sans, 44), INK)
+centered("DROP OFF OR CHOOSE DELIVERY", 2610, font(sans_bold, 56), GREEN)
+centered("Track every step  •  Earn rewards  •  Pick up fresh", 2700, font(sans, 44), INK)
+centered("First visit? Create your account, then get your bag at the shop.", 2775, font(sans_bold, 36), INK)
 
 d.rounded_rectangle((190, 2850, W - 190, 3050), radius=52, fill="#efe5c8", outline=GOLD, width=8)
 centered("NORMAL HOURS: 9 AM–5 PM", 2880, font(sans_bold, 56), GREEN)
 centered("Need access from 5–9 PM? Call 903-426-1543", 2960, font(sans, 42), INK)
 
-centered("cotton-roots-private-trial.onrender.com", 3160, font(sans_bold, 36), WHITE)
+centered("ONE LITTLE STEP. FRESH BEGINNINGS.", 3160, font(sans_bold, 36), WHITE)
 
 png = OUT / "cotton-roots-app-flyer.png"
 pdf = OUT / "cotton-roots-app-flyer.pdf"
