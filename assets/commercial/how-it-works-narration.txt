@@ -1,21 +1,17 @@
-Hi there, and welcome to Cotton Roots and Company. Let me walk you through the whole process, from your very first visit to fresh, folded laundry.
+Hi there, and welcome to Cotton Roots and Company. Here is the whole process in just a few simple steps.
 
-First, create your customer account, add your contact information, and securely verify your payment method. Your card details stay protected with Stripe.
+Create your customer account and securely verify payment through Stripe.
 
-For your first bag, come see us at 307 Locust Street during regular shop hours, and bring your dirty clothes with you.
+For your first bag, visit 307 Locust Street with your dirty clothes. Open My Bags, get the bag-box code, take one Cotton Roots bag, and scan its QR code. That assigns the bag to you. Put your clothes inside and create your order.
 
-Open My Bags in the app, get the bag-box access code, and check out one Cotton Roots bag. Scan the unique QR code attached to that bag. That connects the bag directly to your account. Place your dirty clothes inside, close the bag box, and follow the app to create your laundry order.
+Choose shop drop-off, or full-service pickup and return. For delivery, save the correct address and instructions. We can serve a home, workplace, camper, or RV within our delivery area. Review the distance fee before confirming.
 
-When you book, choose shop drop-off or full-service pickup and return. For delivery, save the correct address in your profile. We can pick up from and return to a home, workplace, camper, or RV within our available delivery area. The app calculates the distance-based delivery fee before you confirm, so you can review the charge first.
+At drop-off or pickup, the bag is scanned and the handoff is recorded. An approved Washing Specialist accepts the job, scans your bag, photographs the scale, enters the exact weight, and follows your care instructions.
 
-For shop drop-off, bring your registered bag to Cotton Roots, scan it, and confirm the handoff. For full service, an approved Washing Specialist accepts the delivery job and follows the address and delivery instructions saved with your order. The app records each handoff, and you receive a drop-off notification.
+Your items stay together while they are washed, dried, and folded. The same bag is scanned when it is returned to the shop or your delivery address.
 
-Next, the Washing Specialist scans your exact bag, photographs the scale display, enters the measured weight, and confirms they are taking care of it. Your care instructions stay attached to the order every step of the way.
+You receive a text and app notification when the laundry is ready. Review the final weight and total, then pay securely through Stripe. Scan the matching bag when you collect it, or confirm your delivery in the app.
 
-The Washing Specialist keeps your items together, then washes, dries, and folds everything according to your instructions. When finished, they return the same registered bag to Cotton Roots, or to your delivery address for a full-service order. Scanning the bag confirms the work is complete and safely returned.
+You also earn Cotton Roots Rewards: one point per paid dollar. After a verified referral's first paid order, both customers receive one hundred points. Every two hundred fifty points earns a five-dollar credit.
 
-You receive a text message and an in-app notification when your laundry is ready. Open My Laundry to review the final weight and total, then pay securely through Stripe. For shop service, come by, scan your matching bag, and collect your fresh laundry. For delivery, follow the app to confirm that the correct bag was returned.
-
-Every customer is automatically part of Cotton Roots Rewards. You earn one point for every paid dollar. When a friend names you as their referral and completes a first paid order, both of you receive one hundred points. Every two hundred fifty points earns a five-dollar Cotton Roots credit for an eligible future order. You can see your points and referral information inside your profile.
-
-And that is all there is to it. One registered bag, flexible shop or delivery service, clear handoffs, helpful updates, and rewards along the way. We will be glad to take care of you.
+That is it: one registered bag, flexible service, clear updates, and fresh laundry. We will be glad to take care of you.

@@ -579,10 +579,12 @@ function summary(c, o) {
     dl.append(node("dt", k), node("dd", v));
   c.append(dl);
   if (o.total !== undefined) {
+    const credit=Number(o.reward_credit_cents||0)/100,amountDue=Math.max(0,Number(o.total)-credit);
     const amount = node("p", `${o.payment_verified?"Laundry subtotal":"Current laundry total"}: $${Number(o.total).toFixed(2)}`, {
       class: "price",
     });
     c.append(amount);
+    if(credit)c.append(node("p",`Cotton Roots Rewards credit: −$${credit.toFixed(2)} · Amount before tax: $${amountDue.toFixed(2)}`,{class:"note"}));
     if(o.payment_verified&&Number.isSafeInteger(o.sales_tax_cents)&&Number.isSafeInteger(o.payment_total_cents))c.append(node("p",`Sales tax: $${(o.sales_tax_cents/100).toFixed(2)} · Paid total: $${(o.payment_total_cents/100).toFixed(2)}`,{class:"note"}));
   }
   if (o.detergent)
@@ -652,7 +654,7 @@ async function customerRewards(){
  const stats=node("div",undefined,{class:"stat-grid"});stat(stats,rewardsPreview?.points||0,"points");stat(stats,`$${Number(rewardsPreview?.creditDollars||0).toFixed(0)}`,"earned credit");stat(stats,rewardsPreview?.pointsToNextCredit||250,"points to next $5");c.append(stats,node("p",rewardsPreview?.program||"Rewards will appear after verified payments.",{class:"note"}));
  const code=field(c,"Your referral username","text",rewardsPreview?.referralCode||user.username);code.readOnly=true;code.addEventListener("focus",()=>code.select());
  button(c,"Copy referral username",async()=>{await navigator.clipboard.writeText(code.value);message("Referral username copied.")},true);
- c.append(node("p","Reward credit will be available for eligible future checkout after the live payment redemption step is enabled. Points have no cash value and are tied to this account.",{class:"muted"}));
+ c.append(node("p","When you have at least 250 available points, apply a $5 credit from an unpaid order in My laundry before opening Stripe checkout. Points have no cash value and are tied to this account.",{class:"muted"}));
 }
 async function registerManagementPasskey(){
  if(!window.PublicKeyCredential)throw Error("This browser does not support passkeys.");const options=await api("/api/passkeys/registration/options",{});options.challenge=fromBase64url(options.challenge);options.user={...options.user,id:fromBase64url(options.user.id)};options.excludeCredentials=(options.excludeCredentials||[]).map(item=>({...item,id:fromBase64url(item.id)}));const credential=await navigator.credentials.create({publicKey:options});if(!credential)throw Error("Passkey setup was canceled.");await api("/api/passkeys/registration/verify",{credential:credentialJSON(credential)});message("Passkey added. You can now use Face ID, fingerprint, Windows Hello, or your device PIN to sign in.");
@@ -685,8 +687,8 @@ function testPaymentPricing(total) {
   return { base, fee: testTotal - base, testTotal };
 }
 function addStripeCheckout(card, o) {
-  const testing=paymentPreview?.mode==="test",pricing=testing?testPaymentPricing(o.total):null;
-  card.append(node("p",testing&&pricing?`TEST MODE ESTIMATE · Laundry $${(pricing.base / 100).toFixed(2)} + estimated online payment cost $${(pricing.fee / 100).toFixed(2)} = $${(pricing.testTotal / 100).toFixed(2)} before tax. Stripe calculates applicable sales tax from the billing address at checkout.`:`Secure Stripe checkout · $${Number(o.total).toFixed(2)} before applicable sales tax. Card and Link details stay with Stripe.`,{class:"note"}));
+  const payable=Math.max(0,Number(o.total)-Number(o.reward_credit_cents||0)/100),testing=paymentPreview?.mode==="test",pricing=testing?testPaymentPricing(payable):null;
+  card.append(node("p",testing&&pricing?`TEST MODE ESTIMATE · Amount after rewards $${(pricing.base / 100).toFixed(2)} + estimated online payment cost $${(pricing.fee / 100).toFixed(2)} = $${(pricing.testTotal / 100).toFixed(2)} before tax. Stripe calculates applicable sales tax from the billing address at checkout.`:`Secure Stripe checkout · $${payable.toFixed(2)} after rewards and before applicable sales tax. Card and Link details stay with Stripe.`,{class:"note"}));
   button(card, "Pay securely with card or Link", async () => {
     const result = await api("/api/payments/checkout", { orderId: o.id });
     if (testing&&result.pricing?.estimateOnly !== true)throw Error("Test payment estimate missing.");
@@ -794,8 +796,10 @@ async function orders() {
       if (
         o.status === "payment_pending" &&
         paymentPreview?.provider === "stripe"
-      )
+      ) {
+        if(!o.reward_credit_cents&&Number(rewardsPreview?.creditDollars||0)>=5)button(c,"Apply $5 Cotton Roots reward",async()=>{const redeemed=await api("/api/rewards/redeem",{orderId:o.id});rewardsPreview=redeemed.rewards;await route("orders");message("$5 reward applied. Your available points have been updated.")},true);
         addStripeCheckout(c, o);
+      }
       else if (["payment_pending", "paid_hold"].includes(o.status))
         c.append(
           node(
@@ -1557,7 +1561,7 @@ function moneyManagement(data) {
   const [rangeStart,rangeEnd]=rangeFor(moneyPeriod),within=value=>{if(!rangeStart&&!rangeEnd)return true;if(!value)return false;const when=new Date(value);return (!rangeStart||when>=rangeStart)&&(!rangeEnd||when<=rangeEnd)};
   c.append(node("p",rangeStart&&rangeEnd?`Showing ${rangeStart.toLocaleDateString()} through ${rangeEnd.toLocaleDateString()}`:"Showing all recorded dates",{class:"note"}));
   const jobs = (data.orders || []).filter((o) => o.assigned_contractor_id);
-  const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+Number(order.total||0),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
+  const completed=jobs.filter(order=>order.returned_at&&within(order.returned_at)),contractorPay=completed.reduce((sum,order)=>sum+Number(order.contractor_pay?.total||0),0),revenue=(data.orders||[]).filter(order=>order.payment_verified&&within(order.paid_at||order.returned_at)).reduce((sum,order)=>sum+(Number.isSafeInteger(order.payment_subtotal_cents)?order.payment_subtotal_cents/100:Math.max(0,Number(order.total||0)-Number(order.reward_credit_cents||0)/100)),0),visibleCosts=(data.businessCosts||[]).filter(cost=>within(`${cost.date}T12:00:00`)),costs=visibleCosts.reduce((sum,cost)=>sum+Number(cost.amount||0),0),profit=revenue-contractorPay-costs;
   const stats=node("div",undefined,{class:"stat-grid"});c.append(stats);stat(stats,`$${revenue.toFixed(2)}`,"Collected revenue");stat(stats,`$${contractorPay.toFixed(2)}`,"Specialist earnings");stat(stats,`$${costs.toFixed(2)}`,"Business costs");stat(stats,`$${profit.toFixed(2)}`,"Estimated profit");
   c.append(node("p","Estimated profit = verified customer payments − Washing Specialist earnings on returned work − costs entered below.",{class:"note"}),node("h3","Jobs and Washing Specialist pay"),node("p","Payments become ready for payout 24 hours after the customer payment is verified. Bank timing may take longer. Paid jobs are locked.",{class:"note"}));
   const contractors=(data.users||[]).filter(person=>person.role==="contractor"),wrap=node("div",undefined,{class:"table-wrap"}),table=node("table"),head=node("thead"),headRow=node("tr");for(const label of ["Job","Washing Specialist","Completed","Base","Delivery","Rush","Mileage / other","Total","Payout","Edit"])headRow.append(node("th",label));head.append(headRow);table.append(head);const body=node("tbody");
