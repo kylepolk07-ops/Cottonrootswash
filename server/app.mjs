@@ -21,7 +21,7 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const sixDigitCode=()=>String(randomInt(0,1000000)).padStart(6,'0');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const AGREEMENT_VERSION='launch-draft-2026-10-25-v3';
-const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1});
+const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:2.75,rushPerLb:1,extraBag:10,contractor:1});
 const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'],contractor:['platform_role','independent_business','custody_care','deadline_scans','smartphone_required','legal_draft']};
 const SHOP_COORDINATES={latitude:32.47095,longitude:-100.40594};
 const milesBetween=(a,b)=>{const radians=value=>value*Math.PI/180,dLat=radians(b.latitude-a.latitude),dLon=radians(b.longitude-a.longitude),lat1=radians(a.latitude),lat2=radians(b.latitude),h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))};
@@ -69,6 +69,12 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  state.notifications??=[];
  state.passkeyChallenges??={};
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
+ const pricingMigration='delivery-2.75-2026-10-26';
+ if(state.pricingMigration!==pricingMigration){
+  const prior={...state.pricing},effectiveAt=new Date().toISOString();state.pricing.full_service=2.75;state.pricingMigration=pricingMigration;
+  if(Number(prior.full_service)!==2.75){state.pricingHistory.push({id:token().slice(0,24),effective_at:effectiveAt,changed_by:'business-pricing-update',prior,pricing:{...state.pricing}});state.notices.push({id:token().slice(0,24),type:'pricing',effective_at:effectiveAt,created_at:effectiveAt,title:'Pricing update',pricing:{...state.pricing},message:'Pickup and return service is now $2.75 per pound. Existing booked orders keep their original rates.'})}
+  save();
+ }
  if(!row && fixtures){
   const accounts=['customer','customer2','contractor','contractor2','owner'].map(role=>{
    const password=fixturePasswords[role]||token().slice(0,24),salt=token();const id=role;

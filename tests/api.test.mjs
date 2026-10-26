@@ -192,7 +192,7 @@ test('pickup and return orders protect addresses and include distance pricing',a
  offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===offer.id);assert.equal(offer.pickup_address,'100 Test Street, Sweetwater, TX');
  assert.equal((await action(contractor,offer.id,'record_weight',{bagToken:h.fixtures.bagToken,measuredPounds:8.1,weightPhoto})).status,200);
  assert.equal((await action(contractor,offer.id,'wall_checkout',{stationToken:h.fixtures.stationToken})).status,409,'delivery pickup requires the bag, not the shop station');
- const picked=await action(contractor,offer.id,'wall_checkout',{bagToken:h.fixtures.bagToken});assert.equal(picked.status,200);assert.equal(picked.data.order.total,28.5);
+ const picked=await action(contractor,offer.id,'wall_checkout',{bagToken:h.fixtures.bagToken});assert.equal(picked.status,200);assert.equal(picked.data.order.total,26.38);
  assert.equal((await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken})).status,400,'delivery requires a photo');
  const deliveryPhoto=`data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff,0xd8]),Buffer.alloc(1200)]).toString('base64')}`;
  const delivered=await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken,deliveryPhoto});assert.equal(delivered.status,200);assert.equal(delivered.data.order.status,'payment_pending');assert.ok(delivered.data.order.delivered_at);assert.ok(delivered.data.order.delivery_photo_at);

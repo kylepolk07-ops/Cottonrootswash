@@ -5,7 +5,7 @@ export const ORDER_STATUS = Object.freeze({
   PAYMENT_PENDING:'payment_pending', PAID_HOLD:'paid_hold', PAID_READY:'paid_ready',
   PICKED_UP:'picked_up', CANCELLED:'cancelled'
 });
-export const RATE = Object.freeze({ dropoff:2.5, full_service:3, contractor:1, extraBag:10, rushPerLb:1 });
+export const RATE = Object.freeze({ dropoff:2.5, full_service:2.75, contractor:1, extraBag:10, rushPerLb:1 });
 export function roundUpHalfPound(value) {
   const n=Number(value);
   if(!Number.isFinite(n)||n<=0) throw Error('Weight must be positive');

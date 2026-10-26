@@ -48,7 +48,7 @@ d.rounded_rectangle((170, 1135, 1230, 1470), radius=60, fill="#efe5c8", outline=
 d.rounded_rectangle((1320, 1135, 2380, 1470), radius=60, fill="#efe5c8", outline=GOLD, width=10)
 centered_left = lambda text, x, y, fnt, fill: d.multiline_text((x, y), text, font=fnt, fill=fill, align="center", spacing=8)
 centered_left("DROP-OFF\n$2.50 / LB", 455, 1190, font(sans_bold, 66), GREEN)
-centered_left("PICKUP + RETURN\n$3.00 / LB", 1515, 1190, font(sans_bold, 66), GREEN)
+centered_left("PICKUP + RETURN\n$2.75 / LB", 1515, 1190, font(sans_bold, 66), GREEN)
 centered("First 5 round-trip miles free  •  Rush service +$1.00/lb", 1505, font(sans_bold, 40), INK)
 centered("SCAN TO CREATE YOUR ACCOUNT", 1585, font(sans_bold, 53), GREEN)
 

@@ -1042,7 +1042,7 @@ async function prepareDeliveryPhoto(file){
 }
 async function book() {
   if(!user.paymentMethodReady){const required=card("🔔","Verify payment before ordering","Cotton Roots requires a verified payment method before a new laundry order can be placed.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});button(required,"Go to Action Center",()=>route("alerts"),true);return}
-  const prices=pricingPreview||{dropoff:2.5,full_service:3,rushPerLb:1};
+  const prices=pricingPreview||{dropoff:2.5,full_service:2.75,rushPerLb:1};
   const c = card(
     "🧺",
     "Let’s book your laundry",
@@ -1500,7 +1500,7 @@ function managementNotifications(data){
  for(const item of items.slice(0,100)){const customer=(data.users||[]).find(user=>user.id===item.customer_id),row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${item.status.toUpperCase()} · ${customer?.displayName||customer?.username||"Customer"}`),node("p",item.body),node("p",`${item.to||"No valid number"} · ${new Date(item.created_at).toLocaleString()}${item.error?` · ${item.error}`:""}`,{class:"muted"}));if(["queued","failed"].includes(item.status))button(row,"Retry text",async()=>{await api("/api/management/notifications",{id:item.id});await route("management");message("Text retry completed.")},true);c.append(row)}
 }
 function managementPricing(data){
-  const prices=data.pricing||{dropoff:2.5,full_service:3,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
+  const prices=data.pricing||{dropoff:2.5,full_service:2.75,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
   c.append(node("p","Pickup & return distance pricing: first 5 round-trip miles from 307 Locust Street to the customer and back are free, then $1.00 per additional mile.",{class:"note"}));
   if(!data.pricingPinSet){c.append(node("p","Create a separate six-digit PIN. You will enter it every time pricing changes.",{class:"note"}));const pin=field(c,"New six-digit pricing PIN","password"),confirmPin=field(c,"Enter the PIN again","password");for(const input of [pin,confirmPin]){input.inputMode="numeric";input.maxLength=6;input.pattern="[0-9]{6}"}button(c,"Set pricing PIN",async()=>{await api("/api/management/pricing",{action:"set_pin",pin:pin.value,confirmPin:confirmPin.value});await route("management");message("Pricing PIN created. Open Pricing again to make changes.")});return}
   const inputs={};for(const [key,label] of [["dropoff","Customer drop-off price per lb"],["full_service","Customer pickup & return price per lb"],["rushPerLb","Rush addition per lb"],["extraBag","Extra or replacement bag price"],["contractor","Washing Specialist pay per approved lb"]]){inputs[key]=field(c,label,"number",Number(prices[key]).toFixed(2));inputs[key].min="0";inputs[key].max="100";inputs[key].step="0.01"}
