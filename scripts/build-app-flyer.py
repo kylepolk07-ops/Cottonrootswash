@@ -41,7 +41,7 @@ centered("COTTON ROOTS & CO.", 445, font(serif_bold, 120), "#f4d58b")
 centered("WASH  •  DRY  •  FOLD", 590, font(sans_bold, 54), WHITE)
 centered("One little step. Fresh beginnings.", 685, font(sans, 48), WHITE)
 
-centered("WE DO THE LAUNDRY.\nYOU GET YOUR TIME BACK.", 880, font(serif_bold, 92), GREEN, spacing=12)
+centered("WASH & FOLD—\nWITHOUT THE WAIT.", 875, font(serif_bold, 104), GREEN, spacing=12)
 
 # Simple, readable pricing for a small handout.
 d.rounded_rectangle((170, 1135, 1230, 1470), radius=60, fill="#efe5c8", outline=GOLD, width=10)
@@ -58,11 +58,12 @@ qx, qy = (W - 1050) // 2, 1670
 d.rounded_rectangle((qx - 35, qy - 35, qx + 1085, qy + 1085), radius=48, fill=WHITE, outline=GOLD, width=18)
 im.paste(qr, (qx, qy))
 
-centered("Drop off or choose delivery  •  Track every step  •  Earn rewards", 2775, font(sans_bold, 38), INK)
+centered("SCAN YOUR BAG  •  DROP OFF  •  GO", 2760, font(sans_bold, 44), GREEN)
+centered("No counter check-in or checkout  •  Track every step in the app", 2825, font(sans, 35), INK)
 
-d.rounded_rectangle((190, 2870, W - 190, 3050), radius=52, fill="#efe5c8", outline=GOLD, width=8)
-centered("OPEN 8 AM–9 PM", 2895, font(sans_bold, 62), GREEN)
-centered("Questions? Call 903-426-1543", 2980, font(sans, 40), INK)
+d.rounded_rectangle((190, 2900, W - 190, 3060), radius=52, fill="#efe5c8", outline=GOLD, width=8)
+centered("OPEN 8 AM–9 PM", 2920, font(sans_bold, 58), GREEN)
+centered("Questions? Call 903-426-1543", 2995, font(sans, 38), INK)
 
 centered("ONE LITTLE STEP. FRESH BEGINNINGS.", 3160, font(sans_bold, 36), WHITE)
 
