@@ -27,7 +27,7 @@ async function harness(t){
 test('independent remote review: health reveals no app data; all app routes require private gate',async t=>{
  const {request,fixtures}=await harness(t);
  const health=await request('/healthz',{headers:{host:'localhost'}});assert.equal(health.status,200);assert.deepEqual(JSON.parse(health.text),{ok:true});
- const qrPage=await request('/trial-qr');assert.equal(qrPage.status,200);assert.match(qrPage.headers['content-type'],/^text\/html/);assert.match(qrPage.text,/never contains|website address/i);
+ const qrPage=await request('/trial-qr');assert.equal(qrPage.status,200);assert.match(qrPage.headers['content-type'],/^text\/html/);assert.match(qrPage.text,/create or open your customer account/i);
  const qrImage=await request('/trial-qr.png');assert.equal(qrImage.status,200);assert.equal(qrImage.headers['content-type'],'image/png');assert.ok(qrImage.text.length>100);
  for(const sensitive of [stagingPassword,fixtures.bagToken,...fixtures.accounts.map(a=>a.password)])assert.ok(!qrPage.text.includes(sensitive));
  for(const path of ['/customer','/contractor','/web/app.mjs','/api/orders','/api/management','/.runtime/fixtures.json']){

@@ -24,40 +24,45 @@ im = Image.new("RGB", (W, H), CREAM)
 d = ImageDraw.Draw(im)
 
 # Deep green header and soft gold footer.
-d.rounded_rectangle((-80, -80, W + 80, 1040), radius=150, fill=GREEN)
+d.rounded_rectangle((-80, -80, W + 80, 820), radius=150, fill=GREEN)
 d.rectangle((0, 3100, W, H), fill=GREEN)
-d.rectangle((0, 1010, W, 1040), fill=GOLD)
+d.rectangle((0, 790, W, 820), fill=GOLD)
 
 logo = Image.open(ROOT / "web" / "brand-mark.png").convert("RGBA")
-logo.thumbnail((610, 610), Image.Resampling.LANCZOS)
-im.alpha_composite(logo, (970, 55)) if im.mode == "RGBA" else im.paste(logo, (970, 55), logo)
+logo.thumbnail((450, 450), Image.Resampling.LANCZOS)
+im.alpha_composite(logo, (1050, 25)) if im.mode == "RGBA" else im.paste(logo, (1050, 25), logo)
 
 def centered(text, y, fnt, fill, spacing=4):
     box = d.multiline_textbbox((0, 0), text, font=fnt, align="center", spacing=spacing)
     x = (W - (box[2] - box[0])) // 2
     d.multiline_text((x, y), text, font=fnt, fill=fill, align="center", spacing=spacing)
 
-centered("COTTON ROOTS & CO.", 610, font(serif_bold, 128), "#f4d58b")
-centered("WASH  &  FOLD", 760, font(sans_bold, 49), WHITE)
-centered("One little step. Fresh beginnings.", 845, font(sans, 57), WHITE)
+centered("COTTON ROOTS & CO.", 445, font(serif_bold, 120), "#f4d58b")
+centered("WASH  •  DRY  •  FOLD", 590, font(sans_bold, 54), WHITE)
+centered("One little step. Fresh beginnings.", 685, font(sans, 48), WHITE)
 
-centered("YOUR LAUNDRY.\nOUR CARE.", 1090, font(serif_bold, 132), GREEN, spacing=18)
-centered("Wash  •  Dry  •  Fold", 1400, font(sans_bold, 61), GOLD)
-centered("SCAN TO CREATE YOUR ACCOUNT", 1495, font(sans_bold, 54), INK)
+centered("WE DO THE LAUNDRY.\nYOU GET YOUR TIME BACK.", 880, font(serif_bold, 92), GREEN, spacing=12)
+
+# Simple, readable pricing for a small handout.
+d.rounded_rectangle((170, 1135, 1230, 1470), radius=60, fill="#efe5c8", outline=GOLD, width=10)
+d.rounded_rectangle((1320, 1135, 2380, 1470), radius=60, fill="#efe5c8", outline=GOLD, width=10)
+centered_left = lambda text, x, y, fnt, fill: d.multiline_text((x, y), text, font=fnt, fill=fill, align="center", spacing=8)
+centered_left("DROP-OFF\n$2.50 / LB", 455, 1190, font(sans_bold, 66), GREEN)
+centered_left("PICKUP + RETURN\n$3.00 / LB", 1515, 1190, font(sans_bold, 66), GREEN)
+centered("First 5 round-trip miles free  •  Rush service +$1.00/lb", 1505, font(sans_bold, 40), INK)
+centered("SCAN TO CREATE YOUR ACCOUNT", 1585, font(sans_bold, 53), GREEN)
 
 qr = Image.open(OUT / "cotton-roots-app-qr.png").convert("RGB")
-qr = qr.resize((930, 930), Image.Resampling.NEAREST)
-qx, qy = (W - 930) // 2, 1600
-d.rounded_rectangle((qx - 35, qy - 35, qx + 965, qy + 965), radius=48, fill=WHITE, outline=GOLD, width=18)
+qr = qr.resize((1050, 1050), Image.Resampling.NEAREST)
+qx, qy = (W - 1050) // 2, 1670
+d.rounded_rectangle((qx - 35, qy - 35, qx + 1085, qy + 1085), radius=48, fill=WHITE, outline=GOLD, width=18)
 im.paste(qr, (qx, qy))
 
-centered("DROP OFF OR CHOOSE DELIVERY", 2610, font(sans_bold, 56), GREEN)
-centered("Track every step  •  Earn rewards  •  Pick up fresh", 2700, font(sans, 44), INK)
-centered("First visit? Create your account, then get your bag at the shop.", 2775, font(sans_bold, 36), INK)
+centered("Drop off or choose delivery  •  Track every step  •  Earn rewards", 2775, font(sans_bold, 38), INK)
 
-d.rounded_rectangle((190, 2850, W - 190, 3050), radius=52, fill="#efe5c8", outline=GOLD, width=8)
-centered("NORMAL HOURS: 9 AM–5 PM", 2880, font(sans_bold, 56), GREEN)
-centered("Need access from 5–9 PM? Call 903-426-1543", 2960, font(sans, 42), INK)
+d.rounded_rectangle((190, 2870, W - 190, 3050), radius=52, fill="#efe5c8", outline=GOLD, width=8)
+centered("OPEN 8 AM–9 PM", 2895, font(sans_bold, 62), GREEN)
+centered("Questions? Call 903-426-1543", 2980, font(sans, 40), INK)
 
 centered("ONE LITTLE STEP. FRESH BEGINNINGS.", 3160, font(sans_bold, 36), WHITE)
 

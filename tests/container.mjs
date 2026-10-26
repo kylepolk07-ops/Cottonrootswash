@@ -36,7 +36,7 @@ try{
  launch();
  const port=docker('port',name,'3000/tcp').split(':').pop();base='http://127.0.0.1:'+port;await ready();
  const status=docker('exec',name,'cat','/proc/1/status');assert.match(status,/Uid:\s+1000\s+1000\s+1000\s+1000/);assert.match(status,/Gid:\s+1000\s+1000\s+1000\s+1000/);assert.match(status,/Groups:\s*\n/);
- const qrPage=await request('/trial-qr');assert.equal(qrPage.status,200);assert.match(qrPage.raw.toString(),/You will still need your private access code/);
+ const qrPage=await request('/trial-qr');assert.equal(qrPage.status,200);assert.match(qrPage.raw.toString(),/Open the customer app on this device/);
  const qrImage=await request('/trial-qr.png');assert.equal(qrImage.status,200);assert.equal(qrImage.headers.get('content-type'),'image/png');assert.equal(qrImage.raw.subarray(1,4).toString(),'PNG');
  const fixtures=JSON.parse(docker('exec',name,'cat',render?'/tmp/cotton-roots-trial/fixtures.json':'/data/fixtures.json'));
  const user=fixtures.accounts.find(a=>a.username==='customer');
