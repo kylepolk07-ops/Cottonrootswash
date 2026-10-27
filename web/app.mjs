@@ -356,13 +356,14 @@ function customerRegistration(){
 }
 function customerFirstVisit(username=""){
   reset();
-  const c=card("🛍","Your account is ready — first, register your bag","Your first visit works a little differently. Come to the Cotton Roots shop once to check out a bag and connect it to your account.");
+  const c=card("🛍","Your account is ready — finish secure setup","Sign in first and securely add your payment method. Then come to Cotton Roots once to register your first bag.");
   c.classList.add("first-visit-card");
   const steps=[
-    ["1","Come to the shop","Visit 307 Locust Street during normal shop hours. Bring your dirty clothes with you."],
-    ["2","Check out one Cotton Roots bag","Sign in, open My bags, get the bag-box code, and take one bag."],
-    ["3","Scan the bag’s QR","This registers that exact bag to your account. Then place your dirty clothes inside it."],
-    ["4","Use the simple laundry process","After your bag is registered, book laundry and follow the guided drop-off and pickup steps."],
+    ["1","Verify payment securely","After signing in, tap Set up payment with Stripe. Cotton Roots never stores your complete card number."],
+    ["2","Come to the shop","Visit 307 Locust Street during normal shop hours. Bring your dirty clothes with you."],
+    ["3","Check out one Cotton Roots bag","Open My bags, get the bag-box code, and take one bag."],
+    ["4","Scan the bag’s QR","This registers that exact bag to your account. Then place your dirty clothes inside it."],
+    ["5","Use the simple laundry process","After your bag is registered, book laundry and follow the guided drop-off and pickup steps."],
   ];
   for(const [number,title,copy] of steps){const row=node("div",undefined,{class:"instruction"}),text=node("div");text.append(node("h3",title),node("p",copy,{class:"muted"}));row.append(node("span",number,{class:"step-number"}),text);c.append(row)}
   button(c,"SIGN IN AND REGISTER MY BAG",()=>{login();const usernameInput=document.querySelector('input[autocomplete="username"]');if(username&&usernameInput)usernameInput.value=username.trim().toLowerCase()});
@@ -388,6 +389,11 @@ async function render() {
     user.agreementVersion !== agreementVersion
   )
     return agreement();
+  if(user.role==="customer"){
+    const profileComplete=Boolean(user.displayName&&user.phone?.length>=7&&user.email&&user.address);
+    if(!profileComplete&&page!=="profile")page="profile";
+    else if(profileComplete&&!user.paymentMethodReady&&!["alerts","profile"].includes(page))page="alerts";
+  }
   if (page === "home" && ["owner", "staff"].includes(user.role))
     page = "management";
   reset();
@@ -640,7 +646,7 @@ async function customerAlerts(){
 async function actionCenter(){
  if(user.role==="customer"){
   const me=await api("/api/me");user=me.user;
-  if(!user.paymentMethodReady){const required=card("🔔","Action required: verify payment","A valid payment method must be securely verified before you can place a laundry order.");button(required,"Set up payment with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});required.append(node("p","Confirmation appears here after Stripe returns you to Cotton Roots. Cotton Roots does not currently send a separate payment-setup text or email.",{class:"muted"}))}
+  if(!user.paymentMethodReady){const required=card("🔔","Finish setting up your account","Add and verify a payment method securely with Stripe before registering laundry or placing an order.");required.append(node("p","Your name, phone, email, and address are already saved. Stripe securely collects your card information; Cotton Roots does not store your complete card number.",{class:"note"}));button(required,"Set up payment securely with Stripe",async()=>{const result=await api("/api/payment-profile/setup",{});window.location.assign(result.setupUrl)});required.append(node("p","After Stripe confirms your payment method, return here and continue with your first bag.",{class:"muted"}))}
   else {const ready=card("✓","Payment method verified","Stripe confirmed that this account is ready to place laundry orders.");ready.append(node("p","Your complete card number remains with Stripe and is not stored by Cotton Roots.",{class:"muted"}))}
   return customerAlerts();
  }
