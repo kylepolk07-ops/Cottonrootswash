@@ -14,7 +14,7 @@ import {invoiceTotal,deliveryFee,contractorPayBreakdown} from '../shared/rules.m
 import {deadlineAlert} from '../shared/management.mjs';
 import {verifyStripeSignature,createStripeCheckout,createStripePaymentSetup,reconcileStripeCheckout,estimateStripeTestCharge} from './stripe-test.mjs';
 import {createConnectedAccount,createConnectOnboardingLink,connectedAccountStatus} from './stripe-connect.mjs';
-import {sendTwilioSms,normalizeUsPhone} from './twilio.mjs';
+import webpush from 'web-push';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -46,7 +46,7 @@ async function estimateDeliveryMiles(address){
  }catch{}
  return Number(milesBetween(SHOP_COORDINATES,destination).toFixed(1));
 }
-export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,notifications=null,twilioFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles}={}) {
+export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false,initialOwner=null,remoteOrigin=null,stagingUser=null,stagingPassword=null,privateGate=true,fixturePasswords={},disposable=false,payment=null,stripeFetch=fetch,boxLockCode=null,distanceLookup=estimateDeliveryMiles,pushSender=webpush.sendNotification.bind(webpush)}={}) {
  if(boxLockCode!==null&&!/^\d{4}$/.test(boxLockCode))throw Error('Box lock code must be exactly four digits');
  if(remoteOrigin&&privateGate){
   const url=new URL(remoteOrigin);
@@ -75,8 +75,11 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  state.businessCosts??=[];
  state.paymentEvents??=[];
  state.notifications??=[];
+ const pushKeysCreated=!state.pushKeys;if(pushKeysCreated)state.pushKeys=webpush.generateVAPIDKeys();
  state.passkeyChallenges??={};
  const save=()=>db.prepare('INSERT OR REPLACE INTO state VALUES (1,?)').run(JSON.stringify(state));
+ if(pushKeysCreated)save();
+ webpush.setVapidDetails(remoteOrigin||'https://cotton-roots.local',state.pushKeys.publicKey,state.pushKeys.privateKey);
  const pricingMigration='delivery-2.75-2026-10-26';
  if(state.pricingMigration!==pricingMigration){
   const prior={...state.pricing},effectiveAt=new Date().toISOString();state.pricing.full_service=2.75;state.pricingMigration=pricingMigration;
@@ -111,22 +114,18 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
  const revokeSessions=userId=>db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
  const proofDir=resolve(dataDir,'delivery-proofs');mkdirSync(proofDir,{recursive:true,mode:0o700});
  const rewardsFor=u=>{if(u.role!=='customer')return null;const paid=state.orders.filter(order=>order.customer_id===u.id&&order.payment_verified),purchasePoints=paid.reduce((sum,order)=>sum+Math.floor(Number(order.payment_total_cents||Math.round(Number(order.total||0)*100))/100),0),qualified=u.referred_by&&paid.length?100:0,referralPoints=state.users.filter(other=>other.role==='customer'&&other.referred_by===u.id&&state.orders.some(order=>order.customer_id===other.id&&order.payment_verified)).length*100,totalEarnedPoints=purchasePoints+qualified+referralPoints,redeemedPoints=Math.max(0,Number(u.reward_points_redeemed)||0),points=Math.max(0,totalEarnedPoints-redeemedPoints);return {points,totalEarnedPoints,redeemedPoints,purchasePoints,referralPoints:qualified+referralPoints,creditDollars:Math.floor(points/250)*5,pointsToNextCredit:points%250?250-points%250:0,referralCode:u.username,program:'Earn 1 point per paid dollar. After a referred customer’s first paid order, both customers receive 100 points. Redeem 250 points for a $5 credit on an unpaid laundry order.'}};
- const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',smsConsent:u.sms_consent===true,smsConsentAt:u.sms_consent_at||null,profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null,payoutOnboardingComplete:u.payout_onboarding_complete===true,paymentMethodReady:u.payment_method_ready===true,notificationAcks:u.notification_acks||[],referralName:u.referral_name||'',referredBy:u.referred_by||null});
+ const publicUser=u=>({id:u.id,username:u.username,role:u.role,approved:u.approved,active:u.active!==false,displayName:u.displayName||'',phone:u.phone||'',email:u.email||'',address:u.address||'',deliveryInstructions:u.delivery_instructions||'',profileVerifiedAt:u.profile_verified_at||null,applicationStatus:u.application_status||null,applicationCreatedAt:u.application_created_at||null,agreementVersion:u.agreement_version||null,agreementAcceptedAt:u.agreement_accepted_at||null,payoutOnboardingComplete:u.payout_onboarding_complete===true,paymentMethodReady:u.payment_method_ready===true,notificationAcks:u.notification_acks||[],referralName:u.referral_name||'',referredBy:u.referred_by||null});
  const staff=u=>['owner','staff'].includes(u.role);
  const payoutState=o=>{if(o.contractor_payout_status==='paid')return {status:'paid',eligibleAt:o.contractor_paid_at||null};if(!o.payment_verified||!o.paid_at)return {status:'waiting_for_customer_payment',eligibleAt:null};const eligibleAt=new Date(Date.parse(o.paid_at)+24*3600000).toISOString();return {status:Date.now()>=Date.parse(eligibleAt)?'ready':'clearing',eligibleAt}};
  const visible=(o,u)=>staff(u)||o.customer_id===u.id||u.role==='contractor'&&(o.assigned_contractor_id===u.id||u.approved&&['at_shop','offered'].includes(o.status));
  const publicOrder=o=>{const {bag_token,stripe_checkout_session_id,stripe_payment_intent_id,payment_event_id,square_event_id,delivery_proof_file,weight_proof_file,contractor_pay_adjustments,...safe}=o;return safe};
- const smsCopy=(order,event)=>({dropped_off:`Cotton Roots: Your bag ${order.bag_id} has been dropped off and checked in. Order ${order.id}. Reply STOP to opt out.`,ready:`Cotton Roots: ${order.service==='full_service'?'Your laundry has been returned. Please confirm delivery in My Laundry.':`Your bag ${order.bag_id} is ready for pickup at the shop.`} Order ${order.id}. Reply STOP to opt out.`}[event]);
- const deliverSms=async record=>{
-  if(!notifications){record.status='queued';record.error='Twilio is not configured';return}
-  try{const sent=await sendTwilioSms({config:notifications,to:record.to,body:record.body,fetchImpl:twilioFetch});record.status='sent';record.provider_status=sent.status;record.provider_id=sent.providerId;record.sent_at=new Date().toISOString();delete record.error}catch(error){record.status='failed';record.error=String(error.message||'Twilio send failed').slice(0,200)}
- };
+ const pushCopy=(order,event)=>({dropped_off:{title:'Bag checked in',body:`Your bag ${order.bag_id} was dropped off at Cotton Roots.`},ready:{title:'Laundry ready',body:order.service==='full_service'?'Your laundry has been returned. Open My Laundry to confirm delivery.':`Your bag ${order.bag_id} is ready for pickup at Cotton Roots.`}}[event]);
  const notifyCustomer=async(order,event)=>{
-  const customer=state.users.find(item=>item.id===order.customer_id),body=smsCopy(order,event);if(!customer||!body)return;
-  const record={id:token().slice(0,24),customer_id:customer.id,order_id:order.id,event,channel:'sms',to:normalizeUsPhone(customer.phone)||'',body,status:'queued',created_at:new Date().toISOString()};
-  if(customer.sms_consent!==true){record.status='skipped';record.error='Customer has not opted in to order texts';state.notifications.push(record);return}
-  if(!record.to){record.status='failed';record.error='Customer phone number is invalid';state.notifications.push(record);return}
-  await deliverSms(record);
+  const customer=state.users.find(item=>item.id===order.customer_id),copy=pushCopy(order,event);if(!customer||!copy)return;
+  const subscriptions=Array.isArray(customer.push_subscriptions)?customer.push_subscriptions:[],record={id:token().slice(0,24),customer_id:customer.id,order_id:order.id,event,channel:'push',body:copy.body,status:'skipped',created_at:new Date().toISOString()};
+  if(!subscriptions.length){record.error='Customer has not enabled phone notifications';state.notifications.push(record);return}
+  let sent=0;for(const subscription of [...subscriptions])try{await pushSender(subscription,JSON.stringify({...copy,url:'/customer'}),{vapidDetails:{subject:remoteOrigin||'https://cotton-roots.local',publicKey:state.pushKeys.publicKey,privateKey:state.pushKeys.privateKey}});sent++}catch(error){if([404,410].includes(error?.statusCode))customer.push_subscriptions=customer.push_subscriptions.filter(item=>item.endpoint!==subscription.endpoint)}
+  record.status=sent?'sent':'failed';record.sent_at=sent?new Date().toISOString():undefined;if(!sent)record.error='No installed phone accepted the notification';
   state.notifications.push(record);
  };
  // The pilot persists one state document. Serialize requests so an awaited
@@ -289,6 +288,7 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
    }
    if(req.method==='GET'){
     if(path==='/api/me')return send(200,{user:publicUser(user),csrf:session.csrf,pricing:state.pricing,rewards:rewardsFor(user),agreement:{version:AGREEMENT_VERSION,required:agreementRequired,conditions:AGREEMENT_CONDITIONS[user.role]||[]},staging:{synthetic:payment?.mode!=='live',disposable,payment:payment?.provider==='stripe'?{provider:'stripe',mode:payment.mode,connect:payment.connect===true,...(payment.mode==='test'?{estimatedFee:{basisPoints:payment.feeBps,fixedCents:payment.feeFixedCents}}:{})}:null}});
+    if(path==='/api/push/config')return send(200,{publicKey:state.pushKeys.publicKey,subscribed:Array.isArray(user.push_subscriptions)&&user.push_subscriptions.length>0});
     if(path==='/api/contractor-onboarding'){
      if(user.role!=='contractor')fail(403,'Washing Specialist required');if(!payment?.connect)return send(200,{enabled:false,status:{started:false,complete:false}});
      let status;try{status=await connectedAccountStatus({config:payment,accountId:user.stripe_connected_account_id,fetchImpl:stripeFetch})}catch(error){console.error('Stripe Connect status failed:',String(error.message||'unknown').slice(0,240));fail(503,connectErrorMessage(error))}if(status.complete&&!user.payout_onboarding_complete){user.payout_onboarding_complete=true;user.payout_onboarding_completed_at=new Date().toISOString();save()}return send(200,{enabled:true,status});
@@ -381,6 +381,12 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const required=AGREEMENT_CONDITIONS[user.role]||[];
      if(!required.length||body.version!==AGREEMENT_VERSION||body.accepted!==true||!Array.isArray(body.conditions)||body.conditions.length!==required.length||!required.every(id=>body.conditions.includes(id)))fail(400,'All agreement conditions must be accepted');
      user.agreement_version=AGREEMENT_VERSION;user.agreement_accepted_at=new Date().toISOString();user.agreement_conditions=[...required];result={user:publicUser(user)};
+    }else if(path==='/api/push/subscribe'){
+     if(user.role!=='customer')fail(403,'Customer required');const subscription=body.subscription,endpoint=typeof subscription?.endpoint==='string'?subscription.endpoint:'',p256dh=typeof subscription?.keys?.p256dh==='string'?subscription.keys.p256dh:'',auth=typeof subscription?.keys?.auth==='string'?subscription.keys.auth:'';
+     let endpointUrl;try{endpointUrl=new URL(endpoint)}catch{fail(400,'Valid phone notification subscription required')}if(endpointUrl.protocol!=='https:'||endpoint.length>2000||p256dh.length<40||p256dh.length>200||auth.length<10||auth.length>100)fail(400,'Valid phone notification subscription required');
+     user.push_subscriptions??=[];user.push_subscriptions=user.push_subscriptions.filter(item=>item.endpoint!==endpoint);user.push_subscriptions.push({endpoint,keys:{p256dh,auth},created_at:new Date().toISOString()});user.push_subscriptions=user.push_subscriptions.slice(-5);result={subscribed:true};
+    }else if(path==='/api/push/unsubscribe'){
+     if(user.role!=='customer')fail(403,'Customer required');const endpoint=typeof body.endpoint==='string'?body.endpoint:'';user.push_subscriptions=(user.push_subscriptions||[]).filter(item=>item.endpoint!==endpoint);result={subscribed:false};
     }else if(path==='/api/contractor-onboarding/start'){
      if(user.role!=='contractor')fail(403,'Washing Specialist required');if(!payment?.connect)fail(503,'Stripe payout onboarding is not enabled');if(!user.displayName||!user.email)fail(400,'Save your name and email before payout setup');
      try{if(!user.stripe_connected_account_id)user.stripe_connected_account_id=await createConnectedAccount({config:payment,user,idempotencyKey:hash(`connect-controller-v1:${user.id}`),fetchImpl:stripeFetch});const onboardingUrl=await createConnectOnboardingLink({config:payment,accountId:user.stripe_connected_account_id,fetchImpl:stripeFetch});result={onboardingUrl}}catch(error){console.error('Stripe Connect onboarding failed:',String(error.message||'unknown').slice(0,240));fail(503,connectErrorMessage(error))}
@@ -416,9 +422,8 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
      const address=typeof body.address==='string'?body.address.trim():'';
      const deliveryInstructions=typeof body.deliveryInstructions==='string'?body.deliveryInstructions.trim():'';
-     const smsConsent=body.smsConsent===true;
      if(displayName.length>80||phone.length>32||email.length>128||address.length>200||deliveryInstructions.length>500||email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Check the contact details and try again');
-     user.displayName=displayName;user.phone=phone;user.email=email;if(user.role==='customer'){user.address=address;user.delivery_instructions=deliveryInstructions;if(smsConsent&&!normalizeUsPhone(phone))fail(400,'Enter a valid US mobile number for text updates');if(smsConsent&&!user.sms_consent)user.sms_consent_at=new Date().toISOString();if(!smsConsent)delete user.sms_consent_at;user.sms_consent=smsConsent}user.profile_verified_at=null;result={user:publicUser(user)};
+     user.displayName=displayName;user.phone=phone;user.email=email;if(user.role==='customer'){user.address=address;user.delivery_instructions=deliveryInstructions}user.profile_verified_at=null;result={user:publicUser(user)};
      }
     }else if(path==='/api/bags/exchange-request'){
      if(user.role!=='customer')fail(403,'Customer required');
@@ -543,10 +548,6 @@ export async function createApp({dataDir=resolve(root,'.runtime'),fixtures=false
      }else if(body.action==='delete'){
       const index=order.contractor_pay_adjustments.findIndex(item=>item.id===body.adjustmentId);if(index<0)fail(404,'Pay adjustment not found');const [adjustment]=order.contractor_pay_adjustments.splice(index,1);result={deleted:true,adjustmentId:adjustment.id,contractorPay:contractorPayBreakdown(order,DEFAULT_PRICING.contractor)};
      }else fail(400,'Unsupported pay adjustment action');
-    }else if(path==='/api/management/notifications'){
-     if(user.role!=='owner')fail(403,'Owner access required');
-     const record=state.notifications.find(item=>item.id===body.id);if(!record)fail(404,'Notification not found');if(!['queued','failed'].includes(record.status))fail(409,'Only queued or failed texts can be retried');
-     const customer=state.users.find(item=>item.id===record.customer_id);if(!customer||customer.sms_consent!==true)fail(409,'Customer text consent is not active');record.to=normalizeUsPhone(customer.phone)||'';if(!record.to)fail(409,'Customer phone number is invalid');record.last_attempt_at=new Date().toISOString();await deliverSms(record);result={notification:record};
     }else if(/^\/api\/management\/complaints\/[^/]+$/.test(path)){
      if(!staff(user))fail(403,'Management access required');
      const complaint=state.complaints.find(item=>item.id===path.split('/').at(-1));if(!complaint)fail(404,'Complaint not found');

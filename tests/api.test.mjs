@@ -13,9 +13,9 @@ const customerConditions=['platform_role','customer_contractor_service','inspect
 const contractorConditions=['platform_role','independent_business','custody_care','deadline_scans','smartphone_required','legal_draft'];
 const weightPhoto=`data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff,0xd8]),Buffer.alloc(1200)]).toString('base64')}`;
 
-async function harness(t) {
+async function harness(t,overrides={}) {
  const dataDir=await mkdtemp(join(tmpdir(),'cotton-api-'));
- let app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4});
+ let app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4,...overrides});
  async function listen(){await new Promise(r=>app.server.listen(0,'127.0.0.1',r));}
  await listen();
  const fixtures=JSON.parse(await readFile(join(dataDir,'fixtures.json'),'utf8'));
@@ -40,7 +40,7 @@ async function harness(t) {
   clients.push(c);return c;
  }
  t.after(async()=>{await new Promise(r=>app.server.close(r));app.close?.();await rm(dataDir,{recursive:true,force:true});});
- return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
+ return {dataDir,fixtures,client,async hostileHost(){return new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:app.server.address().port,path:'/customer',headers:{Host:'attacker.invalid'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject)});},async restart(){await new Promise(r=>app.server.close(r));app.close?.();app=await createApp({dataDir,fixtures:true,distanceLookup:async()=>4,...overrides});await listen();},async anonymous(path,options){return fetch(`http://127.0.0.1:${app.server.address().port}${path}`,options)}};
 }
 const denied=r=>assert.ok([400,401,403,404,409,422,501,503].includes(r.status),`Expected denial, received ${r.status}: ${JSON.stringify(r.data)}`);
 async function setupOrder(h,c,extra={}){
@@ -55,7 +55,7 @@ test('installable app assets have safe mobile metadata and correct content types
  const h=await harness(t);
  const manifest=await h.anonymous('/web/manifest.webmanifest');
  assert.equal(manifest.status,200);assert.match(manifest.headers.get('content-type'),/^application\/manifest\+json/);
- const metadata=await manifest.json();assert.equal(metadata.name,'Cotton Roots & Co.');assert.equal(metadata.display,'standalone');assert.equal(metadata.start_url,'/');
+ const metadata=await manifest.json();assert.equal(metadata.name,'Cotton Roots & Co.');assert.equal(metadata.display,'standalone');assert.equal(metadata.start_url,'/customer');
  for(const [path,type] of [['/web/brand-mark.png','image/png'],['/web/icon-192.png','image/png'],['/web/icon-512.png','image/png'],['/web/apple-touch-icon.png','image/png'],['/web/service-worker.js','text/javascript']]){
   const response=await h.anonymous(path);assert.equal(response.status,200,path);assert.match(response.headers.get('content-type'),new RegExp(`^${type.replace('/','\\/')}`),path);
  }
@@ -182,9 +182,11 @@ test('role dashboards summarize only authorized product data',async t=>{
 });
 
 test('pickup and return orders protect addresses and include distance pricing',async t=>{
- const h=await harness(t),customer=await h.client('customer'),contractor=await h.client('contractor'),owner=await h.client('owner');
+ const pushed=[],h=await harness(t,{pushSender:async(_subscription,payload)=>{pushed.push(JSON.parse(payload))}}),customer=await h.client('customer'),contractor=await h.client('contractor'),owner=await h.client('owner');
+ const pushConfig=await customer.request('/api/push/config');assert.equal(pushConfig.status,200);assert.match(pushConfig.data.publicKey,/^[A-Za-z0-9_-]+$/);assert.equal(pushConfig.data.subscribed,false);
+ const subscription={endpoint:'https://push.example/subscription-1',keys:{p256dh:'A'.repeat(64),auth:'B'.repeat(24)}};assert.equal((await customer.request('/api/push/subscribe',{method:'POST',body:{subscription}})).status,200);
  assert.equal((await customer.request('/api/claim',{method:'POST',body:{bagToken:h.fixtures.bagToken,boxAcknowledged:true,lockedAcknowledged:true}})).status,200);
- const profile=await customer.request('/api/profile',{method:'POST',body:{displayName:'Delivery Test',phone:'325-555-0111',email:'delivery@example.com',address:'100 Test Street, Sweetwater, TX',deliveryInstructions:'Leave beside the porch chair',smsConsent:true}});assert.equal(profile.status,200);assert.equal(profile.data.user.smsConsent,true);
+ const profile=await customer.request('/api/profile',{method:'POST',body:{displayName:'Delivery Test',phone:'325-555-0111',email:'delivery@example.com',address:'100 Test Street, Sweetwater, TX',deliveryInstructions:'Leave beside the porch chair'}});assert.equal(profile.status,200);
  const booked=await customer.request('/api/orders',{method:'POST',body:{service:'full_service',detergent:'standard',rush_requested:false,pickupAddress:'forged',returnAddress:'forged',distanceMiles:0}});assert.equal(booked.status,200);assert.equal(booked.data.order.status,'offered');assert.equal(booked.data.order.delivery_fee,3);assert.equal(booked.data.order.pickup_address,'100 Test Street, Sweetwater, TX');assert.equal(booked.data.order.return_address,booked.data.order.pickup_address);assert.equal(booked.data.order.delivery_instructions,'Leave beside the porch chair');assert.ok(booked.data.order.due_at);
  let offer=(await contractor.request('/api/orders')).data.orders.find(order=>order.id===booked.data.order.id);assert.equal(offer.pickup_address,undefined);assert.equal(offer.delivery_miles,8);
  assert.equal((await contractor.request('/api/availability',{method:'POST',body:{days:[shopDateKey()],preference:'both'}})).status,200);
@@ -196,7 +198,7 @@ test('pickup and return orders protect addresses and include distance pricing',a
  assert.equal((await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken})).status,400,'delivery requires a photo');
  const deliveryPhoto=`data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff,0xd8]),Buffer.alloc(1200)]).toString('base64')}`;
  const delivered=await action(contractor,offer.id,'return_bag',{bagToken:h.fixtures.bagToken,deliveryPhoto});assert.equal(delivered.status,200);assert.equal(delivered.data.order.status,'payment_pending');assert.ok(delivered.data.order.delivered_at);assert.ok(delivered.data.order.delivery_photo_at);
- const messages=(await owner.request('/api/management')).data.notifications.filter(item=>item.order_id===offer.id);assert.deepEqual(messages.map(item=>item.event),['ready']);assert.ok(messages.every(item=>item.status==='queued'&&item.to==='+13255550111'));
+ const messages=(await owner.request('/api/management')).data.notifications.filter(item=>item.order_id===offer.id);assert.deepEqual(messages.map(item=>item.event),['ready']);assert.ok(messages.every(item=>item.status==='sent'&&item.channel==='push'));assert.deepEqual(pushed.map(item=>item.title),['Laundry ready']);
  const proof=await customer.request(`/api/orders/${offer.id}/delivery-proof`);assert.equal(proof.status,200);assert.match(proof.headers.get('content-type'),/^image\/jpeg/);
  assert.equal((await customer.request('/api/management/pay-adjustments',{method:'POST',body:{action:'add',orderId:offer.id,reason:'Mileage',amount:4.5}})).status,403);
  const adjusted=await owner.request('/api/management/pay-adjustments',{method:'POST',body:{action:'set',orderId:offer.id,reason:'Extra mileage reimbursement',amount:4.5}});assert.equal(adjusted.status,200);assert.equal(adjusted.data.contractorPay.base,8.5);assert.equal(adjusted.data.contractorPay.deliveryBonus,2.13);assert.equal(adjusted.data.contractorPay.total,15.13);

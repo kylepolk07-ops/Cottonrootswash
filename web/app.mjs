@@ -17,6 +17,8 @@ let user,
   moneyPeriod="this_week",
   moneyStart="",
   moneyEnd="";
+let installPromptEvent=null;
+window.addEventListener("beforeinstallprompt",event=>{event.preventDefault();installPromptEvent=event});
 const rememberedIdentityKey="crc_remembered_identity";
 const customerTerms=[
  ["platform_role","Cotton Roots provides the app and secure drop-off/pickup location and facilitates the transaction. The washing service is performed by an independent washing specialist."],
@@ -42,6 +44,14 @@ function node(tag, text, attrs = {}) {
   if (text !== undefined) e.textContent = String(text);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   return e;
+}
+function pushKeyBytes(value){const padding="=".repeat((4-value.length%4)%4),base64=(value+padding).replace(/-/g,"+").replace(/_/g,"/"),raw=atob(base64);return Uint8Array.from([...raw].map(character=>character.charCodeAt(0)))}
+async function enablePhoneNotifications(){
+ if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window))throw Error("This phone or browser does not support app notifications.");
+ const permission=await Notification.requestPermission();if(permission!=="granted")throw Error("Notifications were not allowed. Open your phone settings for Cotton Roots and allow notifications.");
+ const [{publicKey},registration]=await Promise.all([api("/api/push/config"),navigator.serviceWorker.ready]);
+ let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKeyBytes(publicKey)});
+ await api("/api/push/subscribe",{subscription:subscription.toJSON()});message("Phone notifications are on.");await route("alerts");
 }
 const fromBase64url=value=>Uint8Array.from(atob(value.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(value.length/4)*4,"=")),char=>char.charCodeAt(0));
 const toBase64url=value=>btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
@@ -640,8 +650,17 @@ async function customerAlerts(){
  button(c,"Refresh notifications",()=>route("alerts"),true);
  if(!events.length)c.append(node("p","No laundry notifications yet.",{class:"muted"}));
  for(const event of events){const item=node("article",undefined,{class:"notification-item"});item.append(node("strong",event.title),node("p",event.text),node("small",`${new Date(event.at).toLocaleString()} · Order ${event.order.id}`));c.append(item)}
- const push=card("📲","Phone alerts","This installable web app can support phone push notifications without an App Store app. Background push setup and customer permission will be added with the notification service; for now, alerts update inside Cotton Roots when it opens.");
- push.append(node("p","Text messages can remain the backup notification method after registration is approved.",{class:"note"}));
+ const installed=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
+ const install=card("📲",installed?"Cotton Roots is on your Home Screen":"Add Cotton Roots to your Home Screen",installed?"Open it from the Cotton Roots icon like any other app.":"Install the app once so it is easy to open and can alert your phone when laundry is ready.");
+ if(!installed){
+  if(installPromptEvent)button(install,"Install Cotton Roots",async()=>{await installPromptEvent.prompt();await installPromptEvent.userChoice;installPromptEvent=null;await route("alerts")});
+  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent);install.append(node("p",ios?"On iPhone: open this page in Safari, tap the Share button, scroll down, then tap Add to Home Screen and Add.":"On Android: open the browser menu, tap Install app or Add to Home screen, then confirm.",{class:"note"}));
+ }
+ const push=card("🔔","Free phone notifications","Get a phone alert when your bag is checked in and when your laundry is ready. These are app notifications, so there is no text-message charge.");
+ if(!installed&&/iPad|iPhone|iPod/.test(navigator.userAgent))push.append(node("p","Add Cotton Roots to your Home Screen first. Then open the installed app and return here to turn on notifications.",{class:"note"}));
+ else if(!("Notification" in window))push.append(node("p","This browser does not support app notifications. Install Cotton Roots and open it from your Home Screen.",{class:"note"}));
+ else if(Notification.permission==="granted"){const config=await api("/api/push/config");push.append(node("span",config.subscribed?"✓ Phone notifications on":"Permission allowed · finish setup",{class:"pill"}));if(!config.subscribed)button(push,"Finish notification setup",enablePhoneNotifications)}
+ else button(push,Notification.permission==="denied"?"Notifications blocked in phone settings":"Turn on free phone notifications",enablePhoneNotifications);
 }
 async function actionCenter(){
  if(user.role==="customer"){
@@ -1140,16 +1159,15 @@ async function profile() {
   const showEditor=()=>{
     reset();const c=card("✎","Edit my information","Keep this current so Cotton Roots can contact you about your laundry.");
     const name=field(c,"Name","text",user.displayName||""),phone=field(c,"Phone","tel",user.phone||""),email=field(c,"Email","email",user.email||""),address=user.role==="customer"?field(c,"Home or camper address","text",user.address||""):null,instructions=user.role==="customer"?field(c,"Where should deliveries be left?","text",user.deliveryInstructions||""):null;
-    let smsConsent=null;if(user.role==="customer"){const consentLabel=node("label"),consentText=node("span","Text me necessary order-status updates. Message and data rates may apply. Reply STOP to opt out." );smsConsent=node("input");smsConsent.type="checkbox";smsConsent.checked=user.smsConsent===true;consentLabel.append(smsConsent,consentText);c.append(consentLabel)}
     if(address)address.autocomplete="street-address";
-    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value,...(address?{address:address.value,deliveryInstructions:instructions.value,smsConsent:smsConsent.checked}:{})});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
+    button(c,"Save and review",async()=>{const result=await api("/api/profile",{displayName:name.value,phone:phone.value,email:email.value,...(address?{address:address.value,deliveryInstructions:instructions.value}:{})});user=result.user;await route("profile");message("Information saved. Review it and verify that it is correct.")});
     button(c,"Back to home",()=>route("home"),true);
     if(complete)button(c,"Cancel changes",()=>route("profile"),true);
   };
   if(!complete)return showEditor();
   const c=card("👤","My account",user.profileVerifiedAt?"Your contact information is complete and verified by you.":"Review everything below, then verify that it is correct.");
   c.append(node("span",user.profileVerifiedAt?"✓ Verified":"Needs verification",{class:"pill"}));
-  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Washing Specialist"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Text updates",user.smsConsent?"On":"Off"],["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
+  const details=node("dl");for(const [label,value] of [["Username",user.username],["Account type",user.role==="customer"?"Customer":"Washing Specialist"],["Name",user.displayName],["Phone",user.phone],["Email",user.email],...(user.role==="customer"?[["Pickup & return address",user.address],["Delivery note",user.deliveryInstructions||"Hand directly to me if available."]]:[])])details.append(node("dt",label),node("dd",value));c.append(details);
   if(user.profileVerifiedAt)c.append(node("p",`Verified ${new Date(user.profileVerifiedAt).toLocaleString()}`,{class:"note"}));
   else button(c,"Verify my information",async()=>{const result=await api("/api/profile",{action:"verify"});user=result.user;await route("profile");message("Your information is verified.")});
   button(c,"Edit information",showEditor,true);
@@ -1504,7 +1522,7 @@ function managementWorkspace(data) {
     ["orders", "📦", "Orders", "Ready for pickup and completed orders"],
     ["alerts", "⏰", "Late alerts", "Due within 6 hours and overdue work"],
     ["complaints", "💬", "Customer complaints", "Review and resolve customer reports"],
-    ["notifications", "📱", "Text notifications", "Queued, sent, skipped, and failed order texts"],
+    ["notifications", "🔔", "Phone notifications", "Sent, skipped, and failed app alerts"],
     ["pricing", "🏷", "Pricing", "Customer rates, bag price, and Washing Specialist pay"],
     ["tools", "🧪", "Pilot tools", "Synthetic bag QR for private testing"],
   ])
@@ -1514,9 +1532,9 @@ function managementWorkspace(data) {
     });
 }
 function managementNotifications(data){
- const c=card("📱","Text notifications","Order texts appear here. Queued messages will begin sending after Twilio is configured.");managementBack(c);
- const items=data.notifications||[];if(!items.length)c.append(node("p","No order texts have been created yet.",{class:"muted"}));
- for(const item of items.slice(0,100)){const customer=(data.users||[]).find(user=>user.id===item.customer_id),row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${item.status.toUpperCase()} · ${customer?.displayName||customer?.username||"Customer"}`),node("p",item.body),node("p",`${item.to||"No valid number"} · ${new Date(item.created_at).toLocaleString()}${item.error?` · ${item.error}`:""}`,{class:"muted"}));if(["queued","failed"].includes(item.status))button(row,"Retry text",async()=>{await api("/api/management/notifications",{id:item.id});await route("management");message("Text retry completed.")},true);c.append(row)}
+ const c=card("🔔","Phone notifications","Free app-notification delivery appears here for customers who installed Cotton Roots and allowed notifications.");managementBack(c);
+ const items=data.notifications||[];if(!items.length)c.append(node("p","No phone notifications have been created yet.",{class:"muted"}));
+ for(const item of items.slice(0,100)){const customer=(data.users||[]).find(user=>user.id===item.customer_id),row=node("div",undefined,{class:"bag-card"});row.append(node("strong",`${item.status.toUpperCase()} · ${customer?.displayName||customer?.username||"Customer"}`),node("p",item.body),node("p",`${new Date(item.created_at).toLocaleString()}${item.error?` · ${item.error}`:""}`,{class:"muted"}));c.append(row)}
 }
 function managementPricing(data){
   const prices=data.pricing||{dropoff:2.5,full_service:2.75,rushPerLb:1,extraBag:10,contractor:1},c=card("🏷","Pricing","Changes apply only to orders booked after you save. Existing jobs keep their original rates.");managementBack(c);
