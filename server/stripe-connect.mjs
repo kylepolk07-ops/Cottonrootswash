@@ -3,7 +3,17 @@ const auth=config=>({Authorization:`Bearer ${config.secretKey}`});
 async function stripeJson(url,options,fetchImpl){const response=await fetchImpl(url,options);let data;try{data=await response.json()}catch{throw Error('Stripe Connect returned an invalid response')}if(!response.ok)throw Error(data?.error?.message||'Stripe Connect is unavailable');return data}
 export async function createConnectedAccount({config,user,idempotencyKey,fetchImpl=fetch}){
  if(!config?.connect||user?.role!=='contractor'||!user.id||!/^.+@.+\..+$/.test(user.email||''))throw Error('Complete your name and email before payout setup');
- const form=new URLSearchParams({type:'express',country:'US',email:user.email,'business_type':'individual','capabilities[transfers][requested]':'true','metadata[cotton_roots_user_id]':user.id});
+ const form=new URLSearchParams({
+  country:'US',
+  email:user.email,
+  business_type:'individual',
+  'controller[fees][payer]':'application',
+  'controller[losses][payments]':'application',
+  'controller[requirement_collection]':'stripe',
+  'controller[stripe_dashboard][type]':'express',
+  'capabilities[transfers][requested]':'true',
+  'metadata[cotton_roots_user_id]':user.id
+ });
  const data=await stripeJson(`${API}/accounts`,{method:'POST',headers:{...auth(config),'Content-Type':'application/x-www-form-urlencoded','Idempotency-Key':idempotencyKey},body:form},fetchImpl);
  if(!/^acct_[A-Za-z0-9]+$/.test(data.id))throw Error('Stripe did not create the payout account');return data.id;
 }
