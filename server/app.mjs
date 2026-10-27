@@ -20,7 +20,14 @@ const token=()=>randomBytes(32).toString('hex');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const sixDigitCode=()=>String(randomInt(0,1000000)).padStart(6,'0');
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-const connectErrorMessage=error=>{const detail=String(error?.message||'');if(/connected_account_write|Accounts Write/i.test(detail))return 'Stripe permission missing: set Connect Accounts to Write for the live restricted key, save it, then try again.';if(/account_links?|Account Links/i.test(detail)&&/permission/i.test(detail))return 'Stripe permission missing: set Account Links to Write for the live restricted key, save it, then try again.';return 'Stripe could not start banking setup. Check the live restricted key permissions for Connect Accounts and Account Links, then try again.'};
+const connectErrorMessage=error=>{
+ const detail=String(error?.message||'').replace(/\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9_]+/g,'[Stripe key]').replace(/\bacct_[A-Za-z0-9]+/g,'[Stripe account]').replace(/https?:\/\/\S+/g,'Stripe Dashboard').slice(0,300);
+ if(/connected_account_write|Accounts Write/i.test(detail))return 'Stripe permission missing: set Connect Accounts to Write for the live key, save it, then try again.';
+ if(/account_links?|Account Links/i.test(detail)&&/permission/i.test(detail))return 'Stripe permission missing: set Account Links to Write for the live key, save it, then try again.';
+ if(/signed up for Connect|activate.*Connect|Connect.*activat/i.test(detail))return 'Stripe Connect is not fully activated yet. In Stripe, open Connect, complete every required platform item, then try again.';
+ if(/Invalid API Key|No such API key|authentication/i.test(detail))return 'Stripe rejected the live key. Replace STRIPE_LIVE_SECRET_KEY in Render with the newly created live key, save, and redeploy.';
+ return detail?`Stripe could not start banking setup: ${detail}`:'Stripe could not start banking setup. Try again, then check the Render logs for the Stripe response.';
+};
 const AGREEMENT_VERSION='launch-draft-2026-10-25-v3';
 const DEFAULT_PRICING=Object.freeze({dropoff:2.5,full_service:2.75,rushPerLb:1,extraBag:10,contractor:1});
 const AGREEMENT_CONDITIONS={customer:['platform_role','customer_contractor_service','inspect_preexisting_damage','laundry_risk','empty_pockets','care_disclosure','claims_process','legal_draft'],contractor:['platform_role','independent_business','custody_care','deadline_scans','smartphone_required','legal_draft']};
